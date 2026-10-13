@@ -91,7 +91,7 @@ class ReviewWorkflowService:
 
     def first_review(self, payload: dict) -> dict:
         payload["state"] = WorkflowState.REVIEWING
-        result = ContentQAPipeline("data").run({**payload["input"], "review_policy": payload["policy"]})
+        result = ContentQAPipeline("data").run({**payload["input"], "review_policy": payload["policy"]}, review_only=True)
         payload["technical"]["first"] = result.model_dump()
         payload["firstReview"] = self._issues(result, payload["firstDecisions"]) + evidence_issues(payload["input"]["original_text"])
         payload["summary"] = self._summary(result, payload["firstReview"])
@@ -121,7 +121,7 @@ class ReviewWorkflowService:
     def second_review(self, payload: dict) -> dict:
         payload["state"] = WorkflowState.SECOND_REVIEWING
         draft = payload["optimizedDraft"]["content"]
-        result = ContentQAPipeline("data").run({**payload["input"], "original_text": draft, "review_policy": payload["policy"]})
+        result = ContentQAPipeline("data").run({**payload["input"], "original_text": draft, "review_policy": payload["policy"]}, review_only=True)
         payload["technical"]["second"] = result.model_dump()
         payload["secondReview"] = self._issues(result, payload["secondDecisions"])
         payload["state"] = WorkflowState.WAITING_FOR_SECOND_DECISIONS if payload["secondReview"] else WorkflowState.SECOND_REVIEW_COMPLETE
