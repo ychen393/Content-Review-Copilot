@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from .generators import FullRewriteGenerator, StagedRewriteGenerator
 from .finalization import FinalEvaluator, ResultAssembler
-from .models import ContentInput, Diagnosis, Issue, PipelineResult, ReviewPolicy, TraceEntry
+from .models import ContentInput, Diagnosis, Issue, PipelineResult, ReviewPolicy, TraceEntry, Evaluation, GeneratedContent
 from .policy import PolicyRuleEvaluator, ReviewPolicyBuilder, SoftRuleEvaluator
 from .providers import configured_provider
 from .repositories import JsonRepository, KnowledgeRetriever, RuleRetriever
@@ -38,7 +38,7 @@ class ContentQAPipeline:
         self.context = ContextResolver()
         self.cleaner = DeterministicRuleEngine()
 
-    def run(self, raw: dict | ContentInput, accepted_issue_ids: list[str] | None = None) -> PipelineResult:
+    def run(self, raw: dict | ContentInput, accepted_issue_ids: list[str] | None = None, *, review_only: bool = False) -> PipelineResult:
         trace = TraceRecorder()
         content = trace.run("Input Parsed", raw, lambda value: value if isinstance(value, ContentInput) else self.input_parser.parse(value))
         policy = trace.run("Review Policy Built", content, lambda value: ReviewPolicy.model_validate(value.review_policy) if value.review_policy else ReviewPolicyBuilder(self.rules.repository.data_dir).build(value))
@@ -67,6 +67,37 @@ class ContentQAPipeline:
             if not item.passed and item.rule_id != "TR-KEYWORD-01":
                 policy_issues.append(Issue(issue_id=f"policy_{item.rule_id}", issue_type="compliance", severity=item.severity, evidence=item.evidence, explanation=item.message, suggestion="Remove or correct the expression that violates this rule.", rule_id=item.rule_id, rule_source=item.source, rule_description=item.message))
         diagnoses["policy"] = Diagnosis(issues=policy_issues, suggestions=[x.suggestion for x in policy_issues], passed=not policy_issues)
+        if review_only:
+            # A review must not invoke content generation, quality-gate rewriting, or retries.
+            # Keep the review result contract intact for existing API consumers.
+            all_issues = [issue for diagnosis in diagnoses.values() for issue in diagnosis.issues]
+            hard_results = PolicyRuleEvaluator().evaluate_hard(cleaned, policy)
+            soft_results = SoftRuleEvaluator(self.provider).evaluate(cleaned, policy)
+            evaluation = Evaluation(
+                compliance_pass=not any(not item.passed for item in hard_results),
+                keyword_pass=not content.keyword or content.keyword in cleaned,
+                fact_consistency=not any(issue.issue_type == "product_fact" for issue in all_issues),
+                persona_alignment=diagnoses["persona"].passed,
+                image_text_consistency=not any(issue.issue_type == "image_text" for issue in all_issues),
+                instruction_following=not all_issues,
+                structure_quality=not any(issue.issue_type == "structure" for issue in all_issues),
+                latency_ms=sum(entry.latency_ms for entry in trace.entries),
+                review_policy_id=policy.policy_id,
+                rule_results=hard_results + soft_results,
+            )
+            report = {
+                "mode": "review_only",
+                "issues_found": [issue.model_dump() for issue in all_issues],
+                "hard_rule_fixes": [item.model_dump() for item in replacements],
+                "generation_changes": [],
+                "review_policy_id": policy.policy_id,
+                "provider": {"name": self.provider.provider_name, "model": self.provider.model, "mode": self.provider.mode},
+            }
+            untouched = GeneratedContent(text=content.original_text, titles=[], tags=[], changes=[], preserved_nouns=[], route="full")
+            return ResultAssembler().assemble(
+                untouched, content.original_text, [], report, parsed, vision,
+                diagnoses, evaluation, trace.entries, None, policy,
+            )
         plan = trace.run("Rewrite Planning", diagnoses, lambda value: RewritePlanner().build(value, content, replacements, accepted_issue_ids))
         route = trace.run("Generation Routing", content.content_type, lambda value: GenerationRouter().route(value))
         context = self.knowledge.context(content.content_type, content.sub_direction)
