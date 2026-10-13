@@ -1,0 +1,18 @@
+[theme]
+primaryColor = "#4F46E5"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F7FA"
+textColor = "#18181B"
+borderColor = "#E4E4E7"
+baseRadius = "12px"
+buttonRadius = "8px"
+showWidgetBorder = true
+showSidebarBorder = true
+font = "Inter, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif"
+baseFontSize = 16
+baseFontWeight = 400
+headingFontSizes = ["36px", "28px", "21px", "18px", "16px", "14px"]
+headingFontWeights = [700, 700, 600, 600, 600, 600]
+
+[theme.sidebar]
+backgroundColor = "#F7F7FA"

@@ -1,0 +1,7 @@
+{
+  "product_id": "demo_product", "product_name": "示例产品", "version": "1.0", "updated_at": "2026-09-21",
+  "facts": [
+    {"fact_id": "PF-001", "field": "规格", "field_en": "Specification", "value": "400g", "value_en": "400g"},
+    {"fact_id": "PF-002", "field": "定位", "field_en": "Positioning", "value": "日常体验示例产品", "value_en": "Demo product for everyday experience"}
+  ]
+}

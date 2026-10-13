@@ -1,0 +1,11 @@
+{
+  "name": "Content Quality Rubric", "version": "1.0", "updated_at": "2026-09-21",
+  "rules": [
+    {"rubric_id": "QR-001", "name": "开头清晰度", "name_en": "Opening clarity", "type": "soft", "description": "开头应快速建立场景与主题", "description_en": "The opening should establish context and topic quickly.", "evaluation_guidance": "检查主题是否清晰", "severity": "medium", "scope": "opening"},
+    {"rubric_id": "QR-002", "name": "结构连贯性", "name_en": "Structural coherence", "type": "soft", "description": "内容结构应连贯", "description_en": "The content should have a coherent structure.", "evaluation_guidance": "检查段落衔接", "severity": "medium", "scope": "full_text"},
+    {"rubric_id": "QR-003", "name": "人设一致性", "name_en": "Persona alignment", "type": "soft", "description": "表达应符合目标人设", "description_en": "The voice should match the target persona.", "evaluation_guidance": "比较语气与目标人设", "severity": "medium", "scope": "full_text"},
+    {"rubric_id": "QR-004", "name": "表达自然度", "name_en": "Naturalness", "type": "soft", "description": "避免机械和过度营销表达", "description_en": "Avoid mechanical or overly promotional language.", "evaluation_guidance": "检查自然度与重复", "severity": "medium", "scope": "full_text"},
+    {"rubric_id": "QR-005", "name": "CTA 自然度", "name_en": "CTA naturalness", "type": "soft", "description": "行动建议应自然且不过度承诺", "description_en": "The call to action should feel natural and avoid overpromising.", "evaluation_guidance": "检查结尾行动建议", "severity": "low", "scope": "ending"},
+    {"rubric_id": "QR-006", "name": "图文一致性", "name_en": "Image-text consistency", "type": "soft", "description": "正文事实应与图片证据一致", "description_en": "Text claims should align with image evidence.", "evaluation_guidance": "比较图片与正文", "severity": "high", "scope": "full_text"}
+  ]
+}

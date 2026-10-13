@@ -1,0 +1,20 @@
+{
+  "nav.new": "新建分析", "nav.history": "历史记录", "nav.benchmark": "Benchmark", "nav.settings": "设置",
+  "app.title": "多模态内容 QA 与优化工作台", "app.subtitle": "诊断、协作决策与可追溯版本管理",
+  "run": "开始分析", "paste": "直接粘贴", "upload": "上传文档", "source": "内容来源", "document": "文档",
+  "brand": "品牌", "product": "产品", "direction": "内容方向", "persona": "目标人设", "keyword": "关键词",
+  "content": "待分析内容", "images": "图片", "language.interface": "界面语言", "language.content": "内容语言",
+  "overview": "概览", "suggestions": "建议", "diagnosis": "诊断", "vision": "视觉分析", "plan": "改写计划", "final": "最终内容", "evaluation": "评估", "trace": "执行轨迹",
+  "accept": "接受建议", "ignore": "忽略", "regenerate": "重新生成建议", "save": "保存版本", "export": "导出", "continue": "继续编辑", "compare": "比较版本",
+  "hard": "硬规则", "opening": "开头", "core": "核心 / RTB", "ending": "结尾", "persona.group": "人设", "multimodal": "多模态",
+  "history.empty": "还没有分析记录。", "settings.provider": "模型服务", "settings.model": "模型", "developer": "开发者详情",
+  "interface.language": "界面语言", "content.language.auto": "自动识别", "content.language.zh": "中文", "content.language.en": "英文",
+  "content.type": "内容类型", "detected.persona": "识别人设", "generation.mode": "生成方式", "issues.found": "发现问题", "content.language": "内容语言",
+  "analysis.result": "本次分析结果", "passed": "通过", "warning": "需要关注", "no.compliance": "未发现硬性合规问题", "content.can.improve": "内容可以继续优化",
+  "quality.score": "质量评分", "checks.passed": "项检查通过", "problem": "问题", "evidence": "原文证据", "basis": "判断依据", "suggested.change": "修改建议",
+  "plan.title": "本次改写计划", "plan.opening": "优化开头", "plan.core": "保留核心内容", "plan.ending": "优化结尾", "plan.style": "保持整体风格",
+  "accepted.count": "已接受 {count} 条建议", "no.issues": "未发现需要处理的问题", "original": "原文", "status": "状态",
+  "regenerate.opening": "重新生成开头", "regenerate.core": "重新生成核心内容", "regenerate.ending": "重新生成结尾", "regenerate.titles": "重新生成标题",
+  "navigation": "导航", "session": "分析记录", "version": "版本", "evaluation.difference": "评分变化", "no.images": "未上传图片，视觉分析已隐藏",
+  "apply.accepted": "应用已接受的建议", "revision.instruction": "补充修改要求", "download.txt": "下载 TXT", "download.markdown": "下载 Markdown", "download.json": "下载 JSON", "download.docx": "下载 DOCX"
+}

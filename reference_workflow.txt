@@ -1,0 +1,1338 @@
+REFERENCE WORKFLOW
+Project: Multimodal Content QA & Optimization Agent
+Source basis:
+1) Catcat draft / Coze workflow export
+2) Workflow screenshots supplied by the user
+
+Purpose:
+This document is a sanitized functional reference for rebuilding the original Coze workflow as a standalone Python application.
+It preserves the BUSINESS LOGIC, stage dependencies, branch behavior, input/output contracts, and key evaluation/generation rules.
+It intentionally removes internal credentials, app tokens, table IDs, private URLs, customer records, and proprietary database identifiers.
+
+======================================================================
+0. ORIGINAL BUSINESS USE CASE
+======================================================================
+
+The original workflow is a social-media content diagnosis + rewrite system for Xiaohongshu-style branded content.
+
+Core idea:
+
+User supplies:
+- content direction metadata
+- keyword
+- original text
+- optional images
+
+System then:
+- normalizes business direction fields
+- retrieves direction rules, sub-directions, keyword rules, RTB references, issue checklists and compliance rules
+- performs image understanding
+- applies hard deterministic compliance cleaning
+- parses the content into title / opening / RTB / ending / tags
+- predicts a persona
+- runs parallel soft diagnosis on opening / RTB / ending
+- retrieves persona DNA/style guidance
+- builds a rewrite plan
+- chooses one of two generation routes
+- generates optimized content
+- performs final deterministic review / assembly
+- returns final text + report + preserved nouns
+- in one branch, generated content is also persisted back to a data store
+
+The rebuilt project should preserve this logic while replacing internal Feishu/Coze dependencies with local repository data providers.
+
+======================================================================
+1. START INPUT CONTRACT
+======================================================================
+
+Original start-node inputs:
+
+direction1: string, required
+    Business stage / audience stage.
+    Example original values included:
+    - 一段
+    - 二段
+    - 孕晚
+    - 常规
+
+direction2: string, required
+    Content/persona route.
+    One important routing value:
+    - 纯路人
+
+direction34: string, required
+    Additional content direction / reference-material category.
+
+keyword: string, required
+    Campaign / SEO / content keyword.
+
+original_text: string, optional
+    Original article to diagnose and rewrite.
+
+image1 ... image15: image, optional
+    Up to 15 images associated with the post.
+
+Standalone redesign may normalize this as:
+
+{
+  "direction_stage": "...",
+  "content_type": "...",
+  "sub_direction": "...",
+  "keyword": "...",
+  "original_text": "...",
+  "images": [...]
+}
+
+======================================================================
+2. HIGH-LEVEL FLOW
+======================================================================
+
+START
+ |
+ +--> Keyword Filter Builder
+ |      |
+ |      +--> Keyword Rule Retrieval
+ |
+ +--> Stage Mapping / RTB Type Builder
+ |      |
+ |      +--> Content Direction Filter --> Content Direction Retrieval
+ |      +--> Sub-direction Filter ------> Sub-direction Retrieval
+ |      +--> Issue Category Filter -----> Issue Checklist Retrieval
+ |      +--> Review Category Filter ----> Compliance Rule Retrieval
+ |      +--> RTB Library Retrieval
+ |
+ +--> Image Understanding
+ |
+ +--> Compliance Rule Retrieval --> Hard Rule Cleaning
+ |
+ +--> [all retrieval outputs + cleaned text + image analysis]
+          |
+          v
+      Context Assembly
+          |
+          v
+      Content Split + Persona Matching
+          |
+          +--> Opening Diagnosis
+          +--> RTB Diagnosis
+          +--> Ending Diagnosis
+          +--> Persona DNA Retrieval
+                    |
+                    v
+              Rewrite Plan Aggregation
+                    |
+                    v
+                 Router
+                /      \
+               /        \
+      FULL REWRITE      STAGED GENERATION
+      ("纯路人")         (default route)
+           |                  |
+ Reference Retrieval     Generate Opening
+           |                  |
+ Generate Full Text      Knowledge Retrieval
+           |                  |
+ Persist Result          Generate RTB
+           |                  |
+           |             Generate Ending
+           |             + Titles + Tags
+            \                /
+             \              /
+              v            v
+               Final Merge
+               + Final Review
+               + Mini Report
+                    |
+                    v
+                   END
+
+======================================================================
+3. PHASE A — INPUT NORMALIZATION
+======================================================================
+
+NODE: Stage Mapping / RTB Type Builder
+Original node: N2 1段/2段/孕晚映射早阶+拼接
+
+Logic:
+
+mapping = {
+  "一段": "早阶",
+  "二段": "早阶",
+  "孕晚": "早阶"
+}
+
+direction1_mapped = mapping.get(direction1, "常规")
+rtb_type = direction1_mapped + direction2
+
+Outputs:
+- direction1_mapped
+- rtb_type
+
+Purpose:
+- normalize raw business stage values
+- construct a composite key used to select RTB content
+
+Standalone module suggestion:
+ContextResolver.normalize_stage()
+
+======================================================================
+4. PHASE B — RETRIEVAL / BUSINESS CONTEXT
+======================================================================
+
+The original workflow uses Feishu tables.
+The standalone rebuild should replace them with repository-backed providers such as JSON / SQLite.
+
+Recommended files:
+
+data/
+  content_directions.json
+  sub_directions.json
+  keyword_rules.json
+  issue_rules.json
+  compliance_rules.json
+  rtb_library.json
+  personas.json
+  knowledge.json
+  reference_articles.json
+
+----------------------------------------------------------------------
+4.1 Keyword Rule Retrieval
+----------------------------------------------------------------------
+
+Flow:
+keyword
+ -> keyword filter
+ -> keyword rule retrieval
+
+Original retrieved fields:
+- keyword
+- stage
+- split_term
+- body_goodcase
+
+Behavior:
+- keyword rules are grouped by stage
+- GENERAL stages include:
+  - 通用
+  - -
+  - empty
+  - 全文
+
+Stage-specific keyword groups:
+- opening
+- RTB
+- ending
+
+Keyword rules are converted into prompt text such as:
+- original keyword
+- permitted split-term form
+- body example
+
+Important rule:
+- body uses one selected split_term consistently
+- original keyword is mainly used for retrieval and tags
+- tag must contain the original keyword, not the split version
+
+Standalone module:
+KeywordRuleRetriever
+
+----------------------------------------------------------------------
+4.2 Content Direction Retrieval
+----------------------------------------------------------------------
+
+Flow:
+direction1_mapped + direction2
+ -> direction filter
+ -> content direction record
+
+Fields used by the original workflow:
+- direction1
+- direction2
+- heading
+- rtb
+- ending
+- full_prompt
+- word_min
+- word_max
+
+Behavior:
+If direction2 == "纯路人":
+    use full_prompt
+else:
+    use heading / rtb / ending separately
+
+Standalone module:
+ContentDirectionRetriever
+
+----------------------------------------------------------------------
+4.3 Sub-direction Retrieval
+----------------------------------------------------------------------
+
+Flow:
+direction1_mapped + direction2
+ -> sub-direction filter
+ -> sub-direction data
+
+Key field:
+- description
+
+This description becomes the "切入点" added to generation prompts.
+
+Standalone module:
+SubDirectionRetriever
+
+----------------------------------------------------------------------
+4.4 RTB Library Retrieval
+----------------------------------------------------------------------
+
+Lookup key:
+rtb_type = direction1_mapped + direction2
+
+Fields:
+- text
+- goodcase
+- knowledge
+- type
+
+These are injected into the RTB generation context.
+
+Standalone module:
+RTBRetriever
+
+----------------------------------------------------------------------
+4.5 Issue Checklist Retrieval
+----------------------------------------------------------------------
+
+The workflow retrieves business issue definitions and groups them by:
+- opening
+- RTB
+- ending
+- general
+
+Important fields:
+- stage
+- description
+- find_prompt
+- case
+
+Issue line assembly:
+
+if description:
+    "诊断标准: {description}"
+if find_prompt:
+    "查找提示: {find_prompt}"
+if case:
+    "参考案例: {case}"
+
+This creates:
+- issue_opening_text
+- issue_rtb_text
+- issue_ending_text
+
+Standalone module:
+IssueRuleRetriever
+
+----------------------------------------------------------------------
+4.6 Compliance / Review Rule Retrieval
+----------------------------------------------------------------------
+
+Fields:
+- rule_id
+- description
+- banned_words
+- replace_words
+- category / cat
+
+Used twice:
+1. before LLM diagnosis (hard-rule cleaning)
+2. after generation (full final scan)
+
+Standalone module:
+ComplianceRuleRetriever
+
+======================================================================
+5. PHASE C — IMAGE UNDERSTANDING
+======================================================================
+
+Original node:
+N15 图片理解
+
+Up to 15 images may be supplied.
+
+For every image, extract:
+
+{
+  "image_id": "图1",
+  "scene": "...",
+  "image_text": [
+    "位置：文字内容"
+  ],
+  "other_products": [
+    "品牌 产品名 段位/规格"
+  ],
+  "style": "..."
+}
+
+Scene format:
+[environment] + [person/object] + [action]
+
+Rules:
+- record only visible facts
+- do not infer hidden facts
+- preserve text verbatim
+- use markers for occluded / blurry text
+- process each image independently
+
+Original style labels included:
+- 温馨日常
+- 趣味活泼
+- 松弛治愈
+- 商业摆拍
+- 简约干净
+- 复古胶片
+
+Standalone module:
+VisionAnalyzer
+
+Provider interface:
+vision(images) -> list[ImageAnalysis]
+
+======================================================================
+6. PHASE D — HARD DETERMINISTIC RULE ENGINE
+======================================================================
+
+Original node:
+N21 硬性问题判断+解决
+
+Input:
+- original_text
+- compliance rule rows
+
+Output:
+- cleaned_text
+- replacement_log
+
+The original logic is NOT a naive global replace.
+
+Important behavior:
+
+1. Split banned terms on:
+   - comma
+   - Chinese comma
+   - enumeration comma
+
+2. Replace-list entries preserve empty values.
+   Empty replacement means DELETE.
+
+3. Mapping is positional:
+   banned_words[i] -> replace_words[i]
+   if replacement does not exist -> delete
+
+4. Process longer banned phrases before shorter phrases.
+
+5. Context-aware replacement:
+   If a short banned term appears inside a longer allowed/compliant phrase,
+   do not replace that occurrence.
+
+6. If banned_word == replacement_word:
+   skip the replacement.
+
+7. Record:
+{
+  "banned_word": "...",
+  "replace_word": "...",
+  "count": n
+}
+
+This deterministic layer should remain separate from semantic LLM diagnosis.
+
+Standalone module:
+DeterministicRuleEngine
+
+======================================================================
+7. PHASE E — CONTEXT ASSEMBLY
+======================================================================
+
+Original node:
+组装点A
+
+Purpose:
+Merge all retrieval outputs into stage-specific prompt packages.
+
+Produces:
+
+prompt_opening
+prompt_rtb
+prompt_ending
+prompt_full
+
+word_min
+word_max
+
+issue_opening_text
+issue_rtb_text
+issue_ending_text
+
+----------------------------------------------------------------------
+7.1 Opening Prompt
+----------------------------------------------------------------------
+
+For non-full-rewrite route:
+
+【内容方向】
+{heading}
+
+【切入点】
+{description}
+
+【关键词要求】
+{opening_keyword_rules}
+
+【关键词统一规则】
+- original keyword
+- use one split-term form consistently in body
+- do not mix variants
+
+----------------------------------------------------------------------
+7.2 RTB Prompt
+----------------------------------------------------------------------
+
+【内容方向】
+{rtb}
+
+【切入点】
+{description}
+
+Optional blocks:
+【RTB素材】
+{rtb_text}
+
+【RTB参考案例】
+{rtb_goodcase}
+
+【RTB背景知识】
+{rtb_knowledge}
+
+【关键词要求】
+{rtb_keyword_rules}
+
+----------------------------------------------------------------------
+7.3 Ending Prompt
+----------------------------------------------------------------------
+
+【内容方向】
+{ending}
+
+【切入点】
+{description}
+
+【关键词要求】
+{ending_keyword_rules}
+
+【关键词统一规则】
+...
+
+【Tag规则】
+Tag must use original keyword.
+
+----------------------------------------------------------------------
+7.4 Full Prompt
+----------------------------------------------------------------------
+
+Only used for direction2 == "纯路人":
+
+【内容方向】
+{full_prompt}
+
+【切入点】
+{description}
+
+【关键词要求】
+{all_keyword_rules}
+
+【关键词统一规则】
+...
+
+【Tag规则】
+...
+
+Standalone module:
+ContextAssembler
+
+======================================================================
+8. PHASE F — CONTENT PARSING + PERSONA MATCHING
+======================================================================
+
+Original node:
+N16 文本拆分+匹配人设
+
+Input:
+cleaned_text
+
+Output:
+
+{
+  "title": "...",
+  "opening": "...",
+  "rtb_content": "...",
+  "ending": "...",
+  "tag": "...",
+  "persona_name": "..."
+}
+
+Content splitting rules:
+
+title:
+- only return a title if clearly identifiable
+- otherwise empty string
+- do not manufacture a title from body text
+
+opening:
+- content before the RTB section
+- usually scene setup / pain-point / transition
+
+rtb_content:
+- primary product proof / ingredient / benefit / certification section
+- core persuasive section
+
+ending:
+- content after RTB
+- summary / CTA / emotional close
+
+tag:
+- trailing hashtag area
+- otherwise empty string
+
+General rules:
+- preserve source wording
+- only segment; do not rewrite at this phase
+- prioritize finding RTB boundaries first
+- split on semantic boundaries, not mid-sentence
+- missing sections -> empty string
+
+Persona matching:
+Select exactly one known persona from configured persona list.
+Match based on:
+- narrator identity
+- parenting/user stage
+- expertise level
+- tone
+- scene type
+- recommendation style
+
+Standalone modules:
+ContentParser
+PersonaMatcher
+
+======================================================================
+9. PHASE G — PERSONA DNA RETRIEVAL
+======================================================================
+
+Original node:
+N17 DNA人设风格查询
+
+Lookup:
+persona_name
+
+Returns persona style references for:
+- head
+- rtb
+- ending
+- articleall
+- scene
+- persona_candidates
+
+These style references are later injected into the rewrite plan.
+
+Standalone module:
+PersonaRepository
+
+======================================================================
+10. PHASE H — PARALLEL SOFT DIAGNOSIS
+======================================================================
+
+Three semantic evaluators run after parsing:
+
+N18 Opening Diagnosis
+N19 RTB Diagnosis
+N20 Ending Diagnosis
+
+Shared output contract:
+
+{
+  "diagnosis": "...",
+  "suggestion": "...",
+  "passed": "true|false"
+}
+
+Rebuild preferably as structured arrays:
+
+{
+  "issues": [...],
+  "suggestions": [...],
+  "passed": true
+}
+
+----------------------------------------------------------------------
+10.1 Opening Diagnosis
+----------------------------------------------------------------------
+
+Inputs:
+- opening
+- issue_opening_text
+- image analysis
+
+Checks:
+1. issue checklist
+2. text-image scene consistency
+3. text-image style consistency
+
+If images empty:
+- skip image consistency checks
+
+If a field is missing:
+- skip that specific comparison
+
+Recommendations:
+- only suggest fixes for triggered problems
+- recommendations must be actionable
+- do not directly rewrite here
+
+Standalone module:
+OpeningEvaluator
+
+----------------------------------------------------------------------
+10.2 RTB Diagnosis
+----------------------------------------------------------------------
+
+Inputs:
+- rtb_content
+- issue_rtb_text
+- image analysis
+
+Checks:
+1. issue checklist
+2. text vs visible product consistency
+3. text vs visible image text
+4. brand/product/stage/specification consistency
+5. style consistency
+
+Example mismatch concept:
+text claims one product/specification,
+image visibly shows another.
+
+Standalone module:
+CoreContentEvaluator / RTBEvaluator
+
+----------------------------------------------------------------------
+10.3 Ending Diagnosis
+----------------------------------------------------------------------
+
+Inputs:
+- ending
+- title
+- tag
+- issue_ending_text
+- image context when relevant
+
+Checks:
+- stage-specific issue checklist
+- closing quality
+- tag / keyword rules
+- relevant text-image consistency
+
+Standalone module:
+EndingEvaluator
+
+======================================================================
+11. PHASE I — REWRITE PLAN AGGREGATION
+======================================================================
+
+Original node:
+N22 方案匹配汇总
+
+Inputs:
+- opening diagnosis / suggestion / passed
+- RTB diagnosis / suggestion / passed
+- ending diagnosis / suggestion / passed
+- persona DNA
+- stage-specific generation prompts
+- hard-rule replacement log
+
+Outputs:
+
+lead_plan
+rtb_plan
+ending_plan
+full_plan
+
+Stage plan format:
+
+【生成提示词】
+...
+
+【诊断结果】
+...
+
+【修改方向】
+...
+
+【是否通过】
+...
+
+【人设风格参考】
+...
+
+【已替换违禁词】
+...
+
+Full-plan format additionally contains:
+- opening diagnosis
+- opening modification direction
+- RTB diagnosis
+- RTB modification direction
+- ending diagnosis
+- ending modification direction
+- full-article persona DNA
+- replacement log
+
+Standalone module:
+RewritePlanner
+
+======================================================================
+12. PHASE J — CONDITIONAL GENERATION ROUTER
+======================================================================
+
+Original node:
+选择器
+
+Condition:
+
+IF direction2 == "纯路人":
+    use FULL REWRITE route
+ELSE:
+    use STAGED GENERATION route
+
+Standalone module:
+GenerationRouter
+
+======================================================================
+13. ROUTE A — FULL REWRITE ("纯路人")
+======================================================================
+
+Flow:
+
+Router TRUE
+ -> reference-material filter
+ -> reference-material retrieval
+ -> Full Rewrite LLM
+ -> persistence formatting
+ -> persistence
+ -> Final Merge / Review
+
+Reference retrieval key:
+direction34
+
+Reference rows include:
+- direction34
+- text
+
+Full Rewrite inputs:
+- full_plan
+- cleaned_text
+- reference data
+
+Generation behavior:
+- rewrite whole article at once
+- preserve full-article coherence
+- use original content as basis
+- follow diagnostic findings + suggestions
+- follow persona DNA
+- do not introduce new banned terms
+- use reference material for style/content direction if available
+- if references empty, continue without them
+
+Output:
+
+{
+  "new_full_text": "...",
+  "new_title1": "...",
+  "new_title2": "...",
+  "new_title3": "...",
+  "new_tag": "...",
+  "rewrite_changes": "...",
+  "preserved_nouns": "..."
+}
+
+Title intent:
+- emotional resonance
+- direct selling point
+- curiosity / suspense
+
+Tag behavior:
+- #xxx formatting
+- original keyword should be preserved according to keyword rules
+
+Standalone module:
+FullRewriteGenerator
+
+======================================================================
+14. ROUTE B — STAGED GENERATION
+======================================================================
+
+Router FALSE.
+
+Generation is sequential to preserve continuity.
+
+----------------------------------------------------------------------
+14.1 Generate Opening
+----------------------------------------------------------------------
+
+Inputs:
+- lead_plan
+- original opening
+
+Output:
+
+{
+  "new_lead": "...",
+  "rewrite_changes": "...",
+  "preserved_nouns": "..."
+}
+
+Rules:
+- optimize from original rather than inventing unrelated content
+- follow rewrite plan
+- fix diagnosed issues
+- match persona DNA
+- no new banned terms
+- if original opening empty, generate one from the plan
+
+Standalone module:
+OpeningGenerator
+
+----------------------------------------------------------------------
+14.2 Knowledge Retrieval for RTB
+----------------------------------------------------------------------
+
+A knowledge filter is constructed using:
+- normalized direction1
+- direction34
+
+Retrieved fields:
+- direction1
+- direction34
+- text
+
+This reference material is passed to RTB generation.
+
+Standalone module:
+KnowledgeRetriever
+
+----------------------------------------------------------------------
+14.3 Generate RTB
+----------------------------------------------------------------------
+
+Inputs:
+- rtb_plan
+- original rtb_content
+- new_lead
+- knowledge reference data
+
+Rules:
+- preserve continuity with generated opening
+- avoid repeating opening content
+- RTB remains the core persuasive section
+- use retrieved knowledge when available
+- do not copy reference material verbatim
+- preserve facts and original objective nouns
+- no new banned terms
+
+Output:
+
+{
+  "new_rtb": "...",
+  "rewrite_changes": "...",
+  "preserved_nouns": "..."
+}
+
+Standalone module:
+CoreContentGenerator
+
+----------------------------------------------------------------------
+14.4 Generate Ending + Titles + Tags
+----------------------------------------------------------------------
+
+Inputs:
+- ending_plan
+- original title
+- original ending
+- original tag
+- new_lead
+- new_rtb
+
+Rules:
+- preserve continuity with previous generated sections
+- ending may summarize / CTA / emotional close
+- create 3 title variants
+- optimize tags
+- preserve required keyword
+- no new banned terms
+
+Output:
+
+{
+  "new_ending": "...",
+  "new_title1": "...",
+  "new_title2": "...",
+  "new_title3": "...",
+  "new_tag": "...",
+  "rewrite_changes": "...",
+  "preserved_nouns": "..."
+}
+
+Standalone module:
+EndingGenerator
+
+======================================================================
+15. PHASE K — PERSISTENCE
+======================================================================
+
+Original full-rewrite branch writes generated content back to a Feishu table.
+
+Persistence data:
+- direction34
+- text = generated full text
+- tag = generated tag
+
+Standalone rebuild:
+Do NOT use original Feishu credentials.
+
+Replace with an interface:
+
+class ContentRepository:
+    save_generated_content(...)
+
+Possible implementations:
+- JSON file
+- SQLite
+- in-memory mock
+- optional future database adapter
+
+Persistence should be optional and should not block the main pipeline.
+
+======================================================================
+16. PHASE L — FINAL MERGE + FINAL REVIEW + MINI REPORT
+======================================================================
+
+Original node:
+N26 合并全文+终审+小报告
+
+Purpose:
+- merge either one-shot or staged results
+- deduplicate tags
+- run full compliance scan again
+- apply the same context-aware banned-term logic used earlier
+- collect preserved nouns
+- create a compact review report
+- produce final output contract
+
+Two possible source modes:
+
+ONE-SHOT MODE
+- uses new_full_text from full rewrite branch
+
+STAGED MODE
+- combines:
+  new_lead
+  new_rtb
+  new_ending
+
+Preserved nouns:
+- one-shot: full preserved noun output
+- staged: combine preserved nouns from opening / RTB / ending
+
+Tag post-processing:
+- split tags
+- remove duplicates case-insensitively
+- normalize to "#tag" format
+
+Final hard-rule pass:
+- use the full compliance rule set
+- not only the previous replacement log
+- process longer banned phrases first
+- use context-aware checks
+- apply replacement/deletion where required
+- skip banned == replacement
+
+Original final outputs:
+
+final_text: string
+report: string
+preserved_nouns: string
+
+Standalone module:
+FinalEvaluator + ResultAssembler
+
+Recommended redesigned result schema:
+
+{
+  "final_text": "...",
+  "titles": ["...", "...", "..."],
+  "tags": ["..."],
+  "report": {
+    "issues_found": [...],
+    "hard_rule_fixes": [...],
+    "generation_changes": [...],
+    "route": "full|staged"
+  },
+  "preserved_nouns": [...],
+  "execution_trace": [...]
+}
+
+======================================================================
+17. END CONTRACT
+======================================================================
+
+Original workflow returns:
+
+final_text
+report
+preserved_nouns
+
+Standalone redesign should preserve those fields while allowing richer metadata.
+
+======================================================================
+18. NODE MAPPING TABLE
+======================================================================
+
+Original Node                                New Module
+
+开始                                         InputParser
+N2 stage mapping                            ContextResolver
+Keyword filter                              KeywordRuleRetriever
+N8 keyword query                            KeywordRuleRetriever
+N3 filter + content query                   ContentDirectionRetriever
+N3B filter + sub-direction query            SubDirectionRetriever
+N6 RTB library                              RTBRetriever
+cat filters                                 RuleFilter / Repository Query
+N12 issue checklist                         IssueRuleRetriever
+N11 review rules                            ComplianceRuleRetriever
+N15 image understanding                     VisionAnalyzer
+N21 hard rule handling                      DeterministicRuleEngine
+组装点A                                      ContextAssembler
+N16 split + persona                         ContentParser + PersonaMatcher
+N17 persona DNA                             PersonaRepository
+N18 opening diagnosis                       OpeningEvaluator
+N19 RTB diagnosis                           CoreContentEvaluator
+N20 ending diagnosis                        EndingEvaluator
+N22 plan summary                            RewritePlanner
+选择器                                       GenerationRouter
+纯路人素材参考                               ReferenceContentRetriever
+纯路人                                       FullRewriteGenerator
+知识科普检索                                 KnowledgeRetriever
+N23 opening generation                      OpeningGenerator
+N24 RTB generation                          CoreContentGenerator
+N25 ending/title/tag                        EndingGenerator
+写入格式化 + add_records                    ContentRepository
+N26 final merge/review/report               FinalEvaluator + ResultAssembler
+结束                                         Pipeline Result
+
+======================================================================
+19. IMPORTANT ARCHITECTURAL PRINCIPLES TO PRESERVE
+======================================================================
+
+1. Deterministic vs semantic separation
+   Hard rules should not be delegated entirely to an LLM.
+
+2. Retrieval before diagnosis/generation
+   Business rules are retrieved from structured data sources.
+
+3. Multimodal evidence
+   Images are first converted into structured evidence, then consumed by evaluators.
+
+4. Parallel diagnosis
+   Opening / RTB / ending are evaluated independently.
+
+5. Planning before rewriting
+   Diagnosis outputs are aggregated into explicit rewrite plans.
+
+6. Conditional generation
+   Some content types use full rewrite; others use staged generation.
+
+7. Sequential continuity
+   In staged generation:
+   opening -> RTB -> ending
+   later stages receive earlier generated content.
+
+8. Final independent review
+   Generated text must be checked again before returning.
+
+9. Structured outputs
+   LLM nodes should return structured JSON/Pydantic-compatible responses.
+
+10. Traceability
+   Rebuilt system should record step-level execution trace.
+
+======================================================================
+20. REBUILD TARGET — STANDALONE PORTFOLIO PROJECT
+======================================================================
+
+Suggested repository:
+
+multimodal-content-qa/
+  app.py
+  backend/
+    pipeline.py
+    schemas/
+    providers/
+    retrieval/
+    rules/
+    evaluators/
+    generators/
+    persistence/
+    tracing/
+  data/
+    content_directions.json
+    sub_directions.json
+    keyword_rules.json
+    issue_rules.json
+    compliance_rules.json
+    rtb_library.json
+    personas.json
+    knowledge.json
+    reference_articles.json
+  benchmark/
+    dataset.jsonl
+    runner.py
+    metrics.py
+    reports/
+  tests/
+  docs/
+  .env.example
+  .gitignore
+  requirements.txt
+  README.md
+
+Recommended provider contract:
+
+class LLMProvider:
+    def generate(...)
+    def structured_generate(...)
+    def vision(...)
+
+Provide:
+- MockLLMProvider for tests
+- one real provider adapter only if API key exists
+
+======================================================================
+21. EXECUTION TRACE REQUIREMENT
+======================================================================
+
+Each pipeline step should record:
+
+{
+  "step": "...",
+  "input_summary": "...",
+  "output_summary": "...",
+  "latency_ms": 0,
+  "status": "success|failed|skipped",
+  "error": null
+}
+
+Recommended UI display:
+
+Input Parsed
+Vision Analysis
+Rule Retrieval
+Hard Rule Check
+Content Parsing
+Opening Evaluation
+Core Evaluation
+Ending Evaluation
+Rewrite Planning
+Generation Routing
+Content Generation
+Final Evaluation
+
+======================================================================
+22. BENCHMARK EXTENSION FOR THE REBUILT PROJECT
+======================================================================
+
+The original workflow did not contain a formal offline benchmark layer.
+The new standalone project should add one.
+
+Test case schema:
+
+{
+  "case_id": "...",
+  "category": "...",
+  "difficulty": "easy|medium|hard",
+  "input": {...},
+  "expected_issues": [...],
+  "expected_pass": true
+}
+
+Suggested categories:
+- compliance
+- keyword
+- product_fact
+- persona
+- image_text
+- structure
+- edge_case
+
+Suggested metrics:
+- precision
+- recall
+- F1
+- pass_rate
+- average_latency
+- estimated_cost
+
+======================================================================
+23. SECURITY / SANITIZATION REQUIREMENT
+======================================================================
+
+Do not copy into the new repository:
+- Feishu app tokens
+- table IDs
+- plugin IDs
+- internal record IDs
+- internal API credentials
+- private customer data
+- proprietary company data dumps
+- private URLs
+
+Use synthetic/local demo datasets.
+
+Keep only:
+- business logic
+- abstract schemas
+- workflow sequencing
+- evaluation concepts
+- routing logic
+
+======================================================================
+24. CODEX REBUILD INSTRUCTION
+======================================================================
+
+Before implementation:
+
+1. Read this reference_workflow.txt completely.
+2. Treat it as the functional source of truth.
+3. Do not translate every Coze node one-to-one.
+4. Reconstruct the workflow using clean Python modules.
+5. Preserve the functional dependencies and branching behavior described above.
+6. Replace all internal data dependencies with local demo repositories.
+7. Separate deterministic rules from LLM-based semantic evaluation.
+8. Add Pydantic schemas for all structured contracts.
+9. Add MockLLMProvider so tests run without external APIs.
+10. Add pytest tests for parsing, rules, retrieval, routing, diagnosis aggregation, final assembly, and benchmark metrics.
+11. Add a Streamlit demo.
+12. Add execution tracing.
+13. Add an offline benchmark layer.
+14. Run tests and a smoke test before claiming the MVP works.
+15. Do not stop after writing a plan; implement the working MVP.
+
+END OF REFERENCE

@@ -1,0 +1,10 @@
+@tailwind base; @tailwind components; @tailwind utilities;
+@layer base { body {@apply m-0 bg-paper text-ink antialiased;} button,input,textarea,select {@apply font-sans;} }
+@layer components {
+  .card {@apply rounded-2xl border border-line bg-white p-5 shadow-card;}
+  .label {@apply mb-2 block text-sm font-semibold text-ink;}
+  .input {@apply w-full rounded-xl border border-line bg-white px-4 py-3 outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/10;}
+  .btn-primary {@apply rounded-xl bg-forest px-5 py-3 text-sm font-semibold text-white transition hover:bg-forest/90 disabled:cursor-not-allowed disabled:opacity-40;}
+  .btn-secondary {@apply rounded-xl border border-line bg-white px-4 py-2.5 text-sm font-semibold text-ink hover:bg-sage;}
+  .eyebrow {@apply text-xs font-bold uppercase tracking-[.14em] text-forest;}
+}

@@ -1,0 +1,7 @@
+{
+  "brand_id": "demo_brand", "brand_name": "示例品牌", "version": "1.0", "updated_at": "2026-09-21",
+  "rules": [
+    {"rule_id": "BR-001", "name": "禁止医疗功效表达", "name_en": "No medical efficacy claims", "type": "hard", "severity": "high", "scope": "full_text", "description": "不得使用治疗、治愈等医疗功效表达", "description_en": "Do not use treatment or cure claims.", "banned_terms": ["治疗", "治愈", "根治"], "replace_terms": ["改善", "帮助改善", "改善"]},
+    {"rule_id": "BR-002", "name": "透明产品表达", "name_en": "Transparent product language", "type": "hard", "severity": "high", "scope": "full_text", "description": "不得使用最强等无法证明的表述", "description_en": "Do not use unsupported superlative claims.", "banned_terms": ["最强"], "replace_terms": ["值得关注"]}
+  ]
+}

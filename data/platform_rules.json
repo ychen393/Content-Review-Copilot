@@ -1,0 +1,7 @@
+{
+  "source_name": "Demo Platform Rule Pack", "source_type": "demo", "version": "1.0", "updated_at": "2026-09-21",
+  "reference_note": "Synthetic demonstration rules; not official platform policy.",
+  "rules": [
+    {"rule_id": "PL-001", "name": "禁止绝对化宣传", "name_en": "No absolute promotional claims", "description": "不得使用百分百有效、全网第一等绝对化表达", "description_en": "Do not use absolute claims such as 100% effective or number one.", "type": "hard", "severity": "high", "scope": "full_text", "banned_terms": ["百分百有效", "全网第一", "零风险"]}
+  ]
+}

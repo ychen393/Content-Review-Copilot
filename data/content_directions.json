@@ -1,0 +1,4 @@
+[
+  {"content_type": "生活方式", "heading": "从真实日常切入", "rtb": "用具体体验说明产品价值", "ending": "自然收束并给出理性建议", "full_prompt": "以真实体验为主线完成可信分享", "word_min": 180, "word_max": 600},
+  {"content_type": "纯路人", "heading": "像朋友一样分享", "rtb": "先讲体验再讲依据", "ending": "轻量总结", "full_prompt": "保持自然口吻完成完整重写", "word_min": 180, "word_max": 600}
+]

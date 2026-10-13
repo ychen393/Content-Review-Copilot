@@ -1,0 +1,20 @@
+{
+  "nav.new": "New Analysis", "nav.history": "History", "nav.benchmark": "Benchmark", "nav.settings": "Settings",
+  "app.title": "Multimodal Content QA Workspace", "app.subtitle": "Diagnosis, collaborative decisions, and traceable versions",
+  "run": "Run analysis", "paste": "Paste text", "upload": "Upload document", "source": "Content source", "document": "Document",
+  "brand": "Brand", "product": "Product", "direction": "Content direction", "persona": "Target persona", "keyword": "Keyword",
+  "content": "Content to analyze", "images": "Images", "language.interface": "Interface language", "language.content": "Content language",
+  "overview": "Overview", "suggestions": "Suggestions", "diagnosis": "Diagnosis", "vision": "Vision", "plan": "Rewrite plan", "final": "Final content", "evaluation": "Evaluation", "trace": "Execution trace",
+  "accept": "Accept suggestion", "ignore": "Ignore", "regenerate": "Regenerate suggestion", "save": "Save version", "export": "Export", "continue": "Continue editing", "compare": "Compare versions",
+  "hard": "Hard rules", "opening": "Opening", "core": "Core / RTB", "ending": "Ending", "persona.group": "Persona", "multimodal": "Multimodal",
+  "history.empty": "No analysis history yet.", "settings.provider": "Model provider", "settings.model": "Model", "developer": "Developer details",
+  "interface.language": "Interface language", "content.language.auto": "Auto-detect", "content.language.zh": "Chinese", "content.language.en": "English",
+  "content.type": "Content type", "detected.persona": "Detected persona", "generation.mode": "Generation mode", "issues.found": "Issues found", "content.language": "Content language",
+  "analysis.result": "Analysis result", "passed": "Passed", "warning": "Needs attention", "no.compliance": "No hard compliance issues found", "content.can.improve": "Content can be improved further",
+  "quality.score": "Quality score", "checks.passed": "checks passed", "problem": "Problem", "evidence": "Source evidence", "basis": "Why this matters", "suggested.change": "Suggested change",
+  "plan.title": "Rewrite plan", "plan.opening": "Improve the opening", "plan.core": "Keep the core content", "plan.ending": "Improve the ending", "plan.style": "Preserve the overall style",
+  "accepted.count": "{count} suggestions accepted", "no.issues": "No issues require attention", "original": "Original", "status": "Status",
+  "regenerate.opening": "Regenerate opening", "regenerate.core": "Regenerate core content", "regenerate.ending": "Regenerate ending", "regenerate.titles": "Regenerate titles",
+  "navigation": "Navigation", "session": "Analysis session", "version": "Version", "evaluation.difference": "Score difference", "no.images": "No images uploaded; Vision is hidden",
+  "apply.accepted": "Apply accepted suggestions", "revision.instruction": "Additional revision instruction", "download.txt": "Download TXT", "download.markdown": "Download Markdown", "download.json": "Download JSON", "download.docx": "Download DOCX"
+}

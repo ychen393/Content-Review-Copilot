@@ -1,0 +1,5 @@
+[
+  {"stage": "opening", "description": "开头应有具体生活场景", "find_prompt": "是否一开始就交代了人物和情境", "case": "早晨准备出门"},
+  {"stage": "core", "description": "核心内容需要具体事实", "find_prompt": "是否说明了体验依据", "case": "描述使用感受"},
+  {"stage": "ending", "description": "结尾应自然且不夸大", "find_prompt": "是否给出清晰收束", "case": "按需理性选择"}
+]

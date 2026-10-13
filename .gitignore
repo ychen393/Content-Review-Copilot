@@ -1,0 +1,16 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+benchmark/reports/*.json
+*.py[cod]
+.tmp/
+.test-*/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+data/*.sqlite3
+data/*.sqlite3-*
+coverage/
+.coverage
