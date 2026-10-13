@@ -72,7 +72,7 @@ class ContentQAPipeline:
             # Keep the review result contract intact for existing API consumers.
             all_issues = [issue for diagnosis in diagnoses.values() for issue in diagnosis.issues]
             hard_results = PolicyRuleEvaluator().evaluate_hard(cleaned, policy)
-            soft_results = SoftRuleEvaluator(self.provider).evaluate(cleaned, policy)
+            soft_results = []  # Semantic soft-rule evaluation requires a separately implemented read-only evaluator; do not mark it as passed.
             evaluation = Evaluation(
                 compliance_pass=not any(not item.passed for item in hard_results),
                 keyword_pass=not content.keyword or content.keyword in cleaned,
