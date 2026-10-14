@@ -20,6 +20,10 @@ class LLMProvider(ABC):
     @abstractmethod
     def structured_generate(self, prompt: str, schema: type[Any], **kwargs: Any) -> Any: ...
 
+    def semantic_review(self, prompt: str, **kwargs: Any) -> list[dict[str, Any]]:
+        """Evaluate rules without generating replacement copy."""
+        raise NotImplementedError("This provider does not support semantic review")
+
     @abstractmethod
     def vision(self, images: list[str], **kwargs: Any) -> list[ImageAnalysis]: ...
 
@@ -35,6 +39,9 @@ class MockLLMProvider(LLMProvider):
 
     def structured_generate(self, prompt: str, schema: type[Any], **kwargs: Any) -> Any:
         return schema.model_validate(kwargs.get("value", {}))
+
+    def semantic_review(self, prompt: str, **kwargs: Any) -> list[dict[str, Any]]:
+        return []  # Mock does not claim to have assessed semantic rules.
 
     def vision(self, images: list[str], **kwargs: Any) -> list[ImageAnalysis]:
         results = []
@@ -65,6 +72,27 @@ class RealLLMProvider(LLMProvider):
 
     def structured_generate(self, prompt: str, schema: type[Any], **kwargs: Any) -> Any:
         return schema.model_validate_json(self.generate(prompt + "\nReturn valid JSON only.", **kwargs))
+
+    def semantic_review(self, prompt: str, **kwargs: Any) -> list[dict[str, Any]]:
+        payload = json.dumps({
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "You are a strict content compliance evaluator. Assess the provided rules against the supplied text. Do not rewrite or generate marketing copy. Return ONLY a JSON array of objects with rule_id, passed (boolean), evidence, and message."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+        }, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions", data=payload,
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        rows = json.loads(data["choices"][0]["message"]["content"].strip())
+        if not isinstance(rows, list):
+            raise ValueError("Semantic review response must be a JSON array")
+        return rows
 
     def vision(self, images: list[str], **kwargs: Any) -> list[ImageAnalysis]:
         return []

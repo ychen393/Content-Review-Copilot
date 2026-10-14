@@ -91,14 +91,29 @@ class SoftRuleEvaluator:
         self.provider = provider
 
     def evaluate(self, text: str, policy: ReviewPolicy) -> list[RuleEvaluationResult]:
-        if self.provider is not None and getattr(self.provider, "mode", "demo") == "live":
-            prompt = "Evaluate the content against each soft rule. Return a JSON array with rule_id, passed, evidence, and message.\nRules:\n" + json.dumps([r.model_dump() for r in policy.soft_rules], ensure_ascii=False) + "\nContent:\n" + text
-            try:
-                rows = json.loads(self.provider.generate(prompt))
-                by_id = {rule.rule_id: rule for rule in policy.soft_rules}
-                return [RuleEvaluationResult(rule_id=row["rule_id"], rule_name=by_id[row["rule_id"]].name, source=by_id[row["rule_id"]].source_name, passed=bool(row["passed"]), evidence=row.get("evidence", ""), severity=by_id[row["rule_id"]].severity, message=row.get("message", by_id[row["rule_id"]].description)) for row in rows if row.get("rule_id") in by_id]
-            except (ValueError, KeyError, TypeError):
-                pass
-        return [RuleEvaluationResult(rule_id=rule.rule_id, rule_name=rule.name, source=rule.source_name,
-            passed=bool(text.strip()), evidence=text[:80], severity=rule.severity, message=rule.description)
-            for rule in policy.soft_rules]
+        if not policy.soft_rules:
+            return []
+        if self.provider is None or getattr(self.provider, "mode", "demo") != "live":
+            # Mock mode is not evidence of semantic compliance.
+            return []
+        prompt = ("Evaluate every rule independently. Return a JSON array with rule_id, "
+                  "passed (boolean), evidence, and message.\\nRules:\\n"
+                  + json.dumps([r.model_dump() for r in policy.soft_rules], ensure_ascii=False)
+                  + "\\nContent:\\n" + text)
+        rows = self.provider.semantic_review(prompt)
+        by_id = {rule.rule_id: rule for rule in policy.soft_rules}
+        results = {}
+        for row in rows:
+            if not isinstance(row, dict) or row.get("rule_id") not in by_id:
+                continue
+            if not isinstance(row.get("passed"), bool):
+                raise ValueError("Semantic review must supply a boolean passed field")
+            rule = by_id[row["rule_id"]]
+            results[rule.rule_id] = RuleEvaluationResult(
+                rule_id=rule.rule_id, rule_name=rule.name, source=rule.source_name,
+                passed=row["passed"], evidence=str(row.get("evidence", "")),
+                severity=rule.severity, message=str(row.get("message", rule.description)),
+            )
+        if len(results) != len(by_id):
+            raise ValueError("Semantic review omitted one or more soft rules")
+        return list(results.values())
