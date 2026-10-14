@@ -65,8 +65,12 @@ def evidence_issues(text: str) -> list[dict]:
 
 
 class ReviewWorkflowService:
-    def __init__(self, store: ReviewStore | None = None) -> None:
+    def __init__(self, store: ReviewStore | None = None, provider=None) -> None:
         self.store = store or ReviewStore()
+        self.provider = provider
+
+    def _pipeline(self) -> ContentQAPipeline:
+        return ContentQAPipeline("data", provider=self.provider)
 
     def create(self, request: ReviewCreateRequest) -> dict:
         created = now(); session_id = str(uuid.uuid4())
@@ -91,7 +95,7 @@ class ReviewWorkflowService:
 
     def first_review(self, payload: dict) -> dict:
         payload["state"] = WorkflowState.REVIEWING
-        result = ContentQAPipeline("data").run({**payload["input"], "review_policy": payload["policy"]}, review_only=True)
+        result = self._pipeline().run({**payload["input"], "review_policy": payload["policy"]}, review_only=True)
         payload["technical"]["first"] = result.model_dump()
         payload["firstReview"] = self._issues(result, payload["firstDecisions"]) + evidence_issues(payload["input"]["original_text"])
         payload["summary"] = self._summary(result, payload["firstReview"])
@@ -110,7 +114,7 @@ class ReviewWorkflowService:
         self._assert_mandatory(payload, "firstReview", "firstDecisions")
         payload["state"] = WorkflowState.GENERATING_OPTIMIZED_DRAFT
         accepted = [key for key, value in payload["firstDecisions"].items() if value == "accepted"]
-        result = ContentQAPipeline("data").run({**payload["input"], "review_policy": payload["policy"]}, accepted)
+        result = self._pipeline().run({**payload["input"], "review_policy": payload["policy"]}, accepted)
         result.final_text = self._conservative_financial_rewrite(payload["input"]["original_text"], result.final_text)
         self._guard_claims(payload["input"]["original_text"], result)
         payload["technical"]["rewrite"] = result.model_dump()
@@ -121,7 +125,7 @@ class ReviewWorkflowService:
     def second_review(self, payload: dict) -> dict:
         payload["state"] = WorkflowState.SECOND_REVIEWING
         draft = payload["optimizedDraft"]["content"]
-        result = ContentQAPipeline("data").run({**payload["input"], "original_text": draft, "review_policy": payload["policy"]}, review_only=True)
+        result = self._pipeline().run({**payload["input"], "original_text": draft, "review_policy": payload["policy"]}, review_only=True)
         payload["technical"]["second"] = result.model_dump()
         payload["secondReview"] = self._issues(result, payload["secondDecisions"])
         payload["state"] = WorkflowState.WAITING_FOR_SECOND_DECISIONS if payload["secondReview"] else WorkflowState.SECOND_REVIEW_COMPLETE
@@ -134,7 +138,7 @@ class ReviewWorkflowService:
             final = payload["optimizedDraft"]
         else:
             accepted = [key for key, value in payload["secondDecisions"].items() if value == "accepted"]
-            result = ContentQAPipeline("data").run({**payload["input"], "original_text": payload["optimizedDraft"]["content"], "review_policy": payload["policy"]}, accepted)
+            result = self._pipeline().run({**payload["input"], "original_text": payload["optimizedDraft"]["content"], "review_policy": payload["policy"]}, accepted)
             result.final_text = self._conservative_financial_rewrite(payload["input"]["original_text"], result.final_text)
             self._guard_claims(payload["input"]["original_text"] + payload["optimizedDraft"]["content"], result)
             payload["technical"]["final"] = result.model_dump(); final = self._draft(result)
