@@ -1,3 +1,5 @@
+import json
+
 from streamlit.testing.v1 import AppTest
 
 from backend.history import HistoryRepository
@@ -49,7 +51,10 @@ def test_mock_and_live_provider_paths_return_same_schema():
     class LiveContractProvider(MockLLMProvider):
         provider_name = "Contract live provider"; model = "test-model"; mode = "live"
         def generate(self, prompt, **kwargs):
-            return "[]" if prompt.startswith("Evaluate the content") else kwargs.get("fallback", "")
+            return kwargs.get("fallback", "")
+        def semantic_review(self, prompt, **kwargs):
+            rules = json.loads(prompt.split("Rules:\\n", 1)[1].split("\\nContent:", 1)[0])
+            return [{"rule_id": r["rule_id"], "passed": True, "evidence": "", "message": "contract test"} for r in rules]
 
     raw = {"original_text": "开头。\n产品体验自然。\n推荐按需选择。", "keyword": "产品"}
     mock_result = ContentQAPipeline("data", provider=MockLLMProvider()).run(raw)
