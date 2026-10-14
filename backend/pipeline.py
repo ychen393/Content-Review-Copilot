@@ -72,7 +72,23 @@ class ContentQAPipeline:
             # Keep the review result contract intact for existing API consumers.
             all_issues = [issue for diagnosis in diagnoses.values() for issue in diagnosis.issues]
             hard_results = PolicyRuleEvaluator().evaluate_hard(cleaned, policy)
-            soft_results = []  # Semantic soft-rule evaluation requires a separately implemented read-only evaluator; do not mark it as passed.
+            soft_results = trace.run("Semantic Soft Rule Review", cleaned, lambda value: SoftRuleEvaluator(self.provider).evaluate(value, policy))
+            semantic_issues = []
+            for rule_result in soft_results:
+                if not rule_result.passed:
+                    semantic_issues.append(Issue(
+                        issue_id=f"semantic_{rule_result.rule_id}", issue_type="compliance",
+                        severity=rule_result.severity, evidence=rule_result.evidence,
+                        explanation=rule_result.message,
+                        suggestion="Review and revise the content to satisfy this rule.",
+                        rule_id=rule_result.rule_id, rule_source=rule_result.source,
+                        rule_description=rule_result.message,
+                    ))
+            diagnoses["semantic_policy"] = Diagnosis(
+                issues=semantic_issues, suggestions=[issue.suggestion for issue in semantic_issues],
+                passed=not semantic_issues,
+            )
+            all_issues = [issue for diagnosis in diagnoses.values() for issue in diagnosis.issues]
             evaluation = Evaluation(
                 compliance_pass=not any(not item.passed for item in hard_results),
                 keyword_pass=not content.keyword or content.keyword in cleaned,
