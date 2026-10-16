@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from .database import connect as database_connect
 
 
 class ReviewStore:
     def __init__(self, path: str | Path = "data/history.sqlite3") -> None:
         self.path = str(path)
-        with sqlite3.connect(self.path) as connection:
+        with database_connect(self.path) as connection:
             connection.execute("""CREATE TABLE IF NOT EXISTS review_workflows (
                 session_id TEXT PRIMARY KEY, created_time TEXT NOT NULL,
                 updated_time TEXT NOT NULL, payload TEXT NOT NULL)""")
