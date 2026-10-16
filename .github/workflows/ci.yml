@@ -1,7 +1,7 @@
 name: Content Review CI
 on:
   push:
-    branches: [feature/v2-pipeline-foundation, main]
+    branches: [feature/v2-pipeline-foundation, feature/m2-unified-content-tasks, main]
   pull_request:
     branches: [main]
 jobs:

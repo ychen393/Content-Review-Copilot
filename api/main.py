@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .models import DecisionRequest, ReviewCreateRequest, ReviewSessionViewModel
 from .service import ReviewWorkflowService
+from .workspace import WorkspaceRepository, ProjectCreate, TaskCreate, ItemCreate, VersionCreate
 from backend.documents import DefaultDocumentParser
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,13 @@ def load(review_id: str) -> dict:
 
 
 def execute(operation):
-    try: return public(operation())
+    try:
+        result = operation()
+        # Linked content items retain review state and outputs; legacy sessions are unaffected.
+        linked = globals().get("workspace")
+        if linked is not None and result.get("id"):
+            linked.sync_review(result["id"], result)
+        return public(result)
     except ValueError as error: raise HTTPException(409, str(error)) from error
     except Exception as error:
         logger.exception("Review operation failed")
@@ -85,3 +92,84 @@ def export_docx(review_id: str):
 
 @app.get("/api/developer/reviews/{review_id}")
 def developer_review(review_id: str): return load(review_id).get("technical", {})
+
+# M2.1 content workspace: additive routes, preserving existing review API.
+workspace = WorkspaceRepository()
+
+@app.post("/api/projects")
+def create_project(request: ProjectCreate):
+    return workspace.create_project(request)
+
+@app.get("/api/projects")
+def list_projects():
+    return workspace.list_projects()
+
+@app.get("/api/projects/{project_id}")
+def get_project(project_id: str):
+    result = workspace.get_project(project_id)
+    if result is None: raise HTTPException(404, "Project not found")
+    return result
+
+@app.post("/api/tasks")
+def create_task(request: TaskCreate):
+    try: return workspace.create_task(request)
+    except LookupError as error: raise HTTPException(404, str(error)) from error
+
+@app.get("/api/projects/{project_id}/tasks")
+def list_project_tasks(project_id: str):
+    try: return workspace.list_tasks(project_id)
+    except LookupError as error: raise HTTPException(404, str(error)) from error
+
+@app.get("/api/tasks/{task_id}")
+def get_task(task_id: str):
+    result = workspace.get_task(task_id)
+    if result is None: raise HTTPException(404, "Task not found")
+    return result
+
+@app.post("/api/tasks/{task_id}/items")
+def create_content_item(task_id: str, request: ItemCreate):
+    try: return workspace.create_item(task_id, request)
+    except LookupError as error: raise HTTPException(404, str(error)) from error
+    except ValueError as error: raise HTTPException(409, str(error)) from error
+
+@app.get("/api/tasks/{task_id}/items")
+def list_content_items(task_id: str):
+    try: return workspace.list_items(task_id)
+    except LookupError as error: raise HTTPException(404, str(error)) from error
+
+@app.get("/api/items/{item_id}")
+def get_content_item(item_id: str):
+    result = workspace.get_item(item_id)
+    if result is None: raise HTTPException(404, "Content item not found")
+    return result
+
+@app.post("/api/items/{item_id}/versions")
+def create_content_version(item_id: str, request: VersionCreate):
+    try: return workspace.add_version(item_id, request)
+    except LookupError as error: raise HTTPException(404, str(error)) from error
+
+@app.get("/api/items/{item_id}/versions")
+def list_content_versions(item_id: str):
+    try: return workspace.list_versions(item_id)
+    except LookupError as error: raise HTTPException(404, str(error)) from error
+
+@app.post("/api/items/{item_id}/review", response_model=ReviewSessionViewModel)
+def start_item_review(item_id: str):
+    item = workspace.get_item(item_id)
+    if item is None:
+        raise HTTPException(404, "Content item not found")
+    if not item.get("body", "").strip():
+        raise HTTPException(409, "Cannot review an empty content item")
+    existing = item.get("review_session_id")
+    if existing:
+        return public(load(existing))
+    task = workspace.get_task(item["task_id"])
+    project = workspace.get_project(task["project_id"])
+    request = ReviewCreateRequest(
+        original_text=item["body"], source_filename=item.get("title", ""),
+        brand=project.get("brand") or "示例品牌",
+        product=project.get("product") or "示例产品",
+    )
+    result = service.create(request)
+    workspace.attach_review(item_id, result["id"])
+    return public(result)
