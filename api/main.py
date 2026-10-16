@@ -27,7 +27,13 @@ def load(review_id: str) -> dict:
 
 
 def execute(operation):
-    try: return public(operation())
+    try:
+        result = operation()
+        # Linked content items retain review state and outputs; legacy sessions are unaffected.
+        linked = globals().get("workspace")
+        if linked is not None and result.get("id"):
+            linked.sync_review(result["id"], result)
+        return public(result)
     except ValueError as error: raise HTTPException(409, str(error)) from error
     except Exception as error:
         logger.exception("Review operation failed")
@@ -146,3 +152,24 @@ def create_content_version(item_id: str, request: VersionCreate):
 def list_content_versions(item_id: str):
     try: return workspace.list_versions(item_id)
     except LookupError as error: raise HTTPException(404, str(error)) from error
+
+@app.post("/api/items/{item_id}/review", response_model=ReviewSessionViewModel)
+def start_item_review(item_id: str):
+    item = workspace.get_item(item_id)
+    if item is None:
+        raise HTTPException(404, "Content item not found")
+    if not item.get("body", "").strip():
+        raise HTTPException(409, "Cannot review an empty content item")
+    existing = item.get("review_session_id")
+    if existing:
+        return public(load(existing))
+    task = workspace.get_task(item["task_id"])
+    project = workspace.get_project(task["project_id"])
+    request = ReviewCreateRequest(
+        original_text=item["body"], source_filename=item.get("title", ""),
+        brand=project.get("brand") or "示例品牌",
+        product=project.get("product") or "示例产品",
+    )
+    result = service.create(request)
+    workspace.attach_review(item_id, result["id"])
+    return public(result)
