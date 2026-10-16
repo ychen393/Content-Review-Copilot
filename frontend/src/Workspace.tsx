@@ -2,13 +2,13 @@ import React,{useEffect,useState} from 'react'
 
 type Project={id:string;name:string;brand:string;platform:string}
 type Task={id:string;project_id:string;mode:'generate'|'review';brief:string;quantity:number}
-type Item={id:string;title:string;body:string;status:string;current_version:number}
+type Item={id:string;title:string;body:string;status:string;current_version:number;review_session_id?:string}
 const request=async<T,>(url:string,body?:unknown):Promise<T>=>{
  const response=await fetch(url,body===undefined?undefined:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
  if(!response.ok)throw new Error((await response.json().catch(()=>({}))).detail||'请求失败')
  return response.json()
 }
-export default function Workspace({onLegacyReview,onReviewItem}:{onLegacyReview:()=>void;onReviewItem:(item:{title:string;body:string})=>void}){
+export default function Workspace({onLegacyReview,onReviewItem}:{onLegacyReview:()=>void;onReviewItem:(item:{id:string;title:string;body:string})=>void}){
  const [projects,setProjects]=useState<Project[]>([])
  const [selected,setSelected]=useState('')
  const [tasks,setTasks]=useState<Task[]>([])
@@ -45,7 +45,7 @@ export default function Workspace({onLegacyReview,onReviewItem}:{onLegacyReview:
  <input aria-label="内容标题" className="border rounded-lg p-2 w-full" placeholder="标题" value={title} onChange={e=>setTitle(e.target.value)}/>
  <textarea aria-label="内容正文" className="border rounded-lg p-2 w-full" rows={4} placeholder="输入内容正文" value={body} onChange={e=>setBody(e.target.value)}/>
  <button className="btn-primary" onClick={()=>submit(async()=>{await request(`/api/tasks/${task}/items`,{title,body});setItems(await request<Item[]>(`/api/tasks/${task}/items`));setTitle('');setBody('')})}>添加内容</button>
- <div className="space-y-2">{items.map((item,i)=><div key={item.id} className="border rounded-lg p-3 flex items-center justify-between gap-3"><div><p className="font-semibold">{i+1}. {item.title||'未命名稿件'}</p><p className="text-sm text-muted">状态 {item.status} · 版本 v{item.current_version}</p></div><div className="flex gap-2"><button className="btn-secondary" disabled={!item.body.trim()} onClick={()=>onReviewItem(item)}>进入单篇审核</button><button className="btn-secondary" onClick={()=>submit(async()=>{const text=window.prompt('修改内容（将保存新版本）',item.body);if(text===null)return;await request(`/api/items/${item.id}/versions`,{text,title:item.title,created_by:'user',reason:'Manual edit'});setItems(await request<Item[]>(`/api/tasks/${task}/items`))})}>新建版本</button></div></div>)}</div>
+ <div className="space-y-2">{items.map((item,i)=><div key={item.id} className="border rounded-lg p-3 flex items-center justify-between gap-3"><div><p className="font-semibold">{i+1}. {item.title||'未命名稿件'}</p><p className="text-sm text-muted">状态 {item.status} · 版本 v{item.current_version}</p></div><div className="flex gap-2"><button className="btn-secondary" disabled={!item.body.trim()} onClick={()=>onReviewItem(item)}>{item.review_session_id?"继续审核":"开始审核"}</button><button className="btn-secondary" onClick={()=>submit(async()=>{const text=window.prompt('修改内容（将保存新版本）',item.body);if(text===null)return;await request(`/api/items/${item.id}/versions`,{text,title:item.title,created_by:'user',reason:'Manual edit'});setItems(await request<Item[]>(`/api/tasks/${task}/items`))})}>新建版本</button></div></div>)}</div>
  </section>}
  </main>
 }
