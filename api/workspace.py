@@ -155,6 +155,57 @@ class WorkspaceRepository:
                        (json.dumps(item, ensure_ascii=False), item_id))
         return version
 
+    def attach_review(self, item_id: str, review_id: str):
+        """Associate one review session with a content item without altering versions."""
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT payload FROM content_items WHERE id=?", (item_id,)).fetchone()
+            if not row:
+                raise LookupError("Content item not found")
+            item = json.loads(row[0])
+            item["review_session_id"] = review_id
+            item["status"] = "REVIEWING"
+            db.execute("UPDATE content_items SET payload=? WHERE id=?", (json.dumps(item, ensure_ascii=False), item_id))
+        return item
+
+    def item_by_review(self, review_id: str):
+        with self.connect() as db:
+            rows = db.execute("SELECT payload FROM content_items").fetchall()
+        return next((item for row in rows if (item := json.loads(row[0])).get("review_session_id") == review_id), None)
+
+    def sync_review(self, review_id: str, payload: dict):
+        """Persist linked review decisions and draft/final revisions without double-writing versions."""
+        item = self.item_by_review(review_id)
+        if item is None:
+            return None
+        state = str(payload.get("state", ""))
+        status = ("APPROVED" if state == "READY_TO_DELIVER" else
+                  "NEEDS_REVISION" if state.startswith("WAITING_FOR") else "REVIEWING")
+        candidate = payload.get("finalVersion") or payload.get("optimizedDraft")
+        text = candidate.get("content") if isinstance(candidate, dict) else None
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT payload FROM content_items WHERE id=?", (item["id"],)).fetchone()
+            current = json.loads(row[0])
+            current["status"] = status
+            current["review_state"] = state
+            current["review_session_id"] = review_id
+            current["review_decisions"] = {
+                "first": payload.get("firstDecisions", {}),
+                "second": payload.get("secondDecisions", {}),
+            }
+            if text and text != current.get("body"):
+                number = current["current_version"] + 1
+                version = {"item_id": current["id"], "version_number": number,
+                           "text": text, "title": current.get("title", ""),
+                           "created_by": "ai", "reason": state, "created_at": timestamp()}
+                db.execute("INSERT INTO content_versions VALUES (?,?,?)",
+                           (current["id"], number, json.dumps(version, ensure_ascii=False)))
+                current.update(body=text, current_version=number)
+            db.execute("UPDATE content_items SET payload=? WHERE id=?",
+                       (json.dumps(current, ensure_ascii=False), current["id"]))
+        return current
+
     def list_versions(self, item_id):
         if not self.get_item(item_id):
             raise LookupError("Content item not found")
