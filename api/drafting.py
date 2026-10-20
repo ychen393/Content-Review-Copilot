@@ -11,6 +11,7 @@ from .service import ReviewWorkflowService
 class GenerateRequest(BaseModel):
     instruction: str = Field(default="", max_length=3000)
     auto_review: bool = True
+    request_key: str = Field(min_length=8, max_length=128)
 
 
 class DraftGenerationService:
