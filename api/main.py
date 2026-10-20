@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -196,7 +197,7 @@ def storage_health():
 @app.post("/api/tasks/{task_id}/generate-one")
 def generate_task_draft(task_id: str, request: GenerateRequest):
     try:
-        return DraftGenerationService(workspace).generate_one(task_id, request.instruction)
+        return DraftGenerationService(workspace).generate_one(task_id, request.instruction, auto_review=request.auto_review, review_service=service)
     except LookupError as error:
         raise HTTPException(404, str(error)) from error
     except ValueError as error:
@@ -204,3 +205,13 @@ def generate_task_draft(task_id: str, request: GenerateRequest):
     except Exception as error:
         logger.exception("Brief draft generation failed")
         raise HTTPException(503, "生成暂时不可用，请检查模型配置或稍后重试") from error
+
+@app.get("/api/models/status")
+def model_configuration_status():
+    """Non-sensitive configuration summary, never expose keys."""
+    enabled = os.getenv("LLM_PROVIDER", "mock").strip().lower() not in ("", "mock", "demo")
+    model = os.getenv("LLM_MODEL", "").strip()
+    configured = bool(enabled and model and os.getenv("LLM_API_KEY", "").strip())
+    return {"mode": "live" if configured else "demo", "ready": configured,
+            "model": model if configured else "mock-v1",
+            "message": "真实模型已配置" if configured else "当前为 Mock 演示模式；请配置 LLM_PROVIDER、LLM_MODEL 和 LLM_API_KEY"}

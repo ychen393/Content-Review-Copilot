@@ -24,8 +24,10 @@ export default function Workspace({onLegacyReview,onReviewItem}:{onLegacyReview:
  const [body,setBody]=useState('')
  const [error,setError]=useState('')
  const [generationNote,setGenerationNote]=useState('')
+ const [modelStatus,setModelStatus]=useState<{mode:string;ready:boolean;model:string;message:string}|null>(null)
+ const [generating,setGenerating]=useState(false)
  const loadProjects=()=>request<Project[]>('/api/projects').then(setProjects).catch(e=>setError(String(e)))
- useEffect(()=>{loadProjects()},[])
+ useEffect(()=>{loadProjects();request<{mode:string;ready:boolean;model:string;message:string}>('/api/models/status').then(setModelStatus).catch(()=>setModelStatus(null))},[])
  useEffect(()=>{setTasks([]);setTask('');if(selected)request<Task[]>(`/api/projects/${selected}/tasks`).then(setTasks).catch(e=>setError(String(e)))},[selected])
  useEffect(()=>{setItems([]);if(task)request<Item[]>(`/api/tasks/${task}/items`).then(setItems).catch(e=>setError(String(e)))},[task])
  const submit=async(action:()=>Promise<void>)=>{setError('');try{await action()}catch(e){setError(e instanceof Error?e.message:String(e))}}
@@ -43,7 +45,7 @@ export default function Workspace({onLegacyReview,onReviewItem}:{onLegacyReview:
  </section>
  {task&&<section className="card space-y-3"><h2 className="text-xl font-semibold">内容队列 · {items.length} 篇</h2>
  <p className="text-sm text-muted">可手工添加待审核稿件；新增版本不会覆盖历史版本。</p>
- {tasks.find(t=>t.id===task)?.mode==='generate'&&<div className="rounded-lg border p-3 space-y-2"><p className="font-semibold">Brief → 候选初稿</p><p className="text-sm text-muted">每次生成一篇。Mock 模式只供演示，不可当作已验证 AI 输出；所有草稿均需人工审核。</p><button className="btn-primary" onClick={()=>submit(async()=>{const item=await request<Item & {generation?:{mode:string;note:string}}>('/api/tasks/'+task+'/generate-one',{});setGenerationNote(item.generation?.note||'草稿已创建，待人工审核');setItems(await request<Item[]>('/api/tasks/'+task+'/items'))})}>生成一篇草稿</button>{generationNote&&<p role="status" className="text-sm">{generationNote}</p>}</div>}
+ {tasks.find(t=>t.id===task)?.mode==='generate'&&<div className="rounded-lg border p-3 space-y-2"><p className="font-semibold">Brief → 候选初稿</p><p className="text-sm text-muted">每次生成一篇并自动执行首次审核；Mock 仍只是演示。</p>{modelStatus&&<p className="text-sm">模型：{modelStatus.model} · {modelStatus.message}</p>}<button className="btn-primary" disabled={generating} onClick={()=>submit(async()=>{setGenerating(true);try{const item=await request<Item & {generation?:{note:string}}>('/api/tasks/'+task+'/generate-one',{auto_review:true});setGenerationNote((item.generation?.note||'草稿已保存')+' · 审核状态：'+item.status);setItems(await request<Item[]>('/api/tasks/'+task+'/items'))}finally{setGenerating(false)}})}>{generating?'正在生成并审核…':'生成并自动审核一篇'}</button>{generationNote&&<p role="status" className="text-sm">{generationNote}</p>}</div>}
  <input aria-label="内容标题" className="border rounded-lg p-2 w-full" placeholder="标题" value={title} onChange={e=>setTitle(e.target.value)}/>
  <textarea aria-label="内容正文" className="border rounded-lg p-2 w-full" rows={4} placeholder="输入内容正文" value={body} onChange={e=>setBody(e.target.value)}/>
  <button className="btn-primary" onClick={()=>submit(async()=>{await request(`/api/tasks/${task}/items`,{title,body});setItems(await request<Item[]>(`/api/tasks/${task}/items`));setTitle('');setBody('')})}>添加内容</button>
