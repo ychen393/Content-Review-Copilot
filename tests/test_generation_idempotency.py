@@ -1,18 +1,22 @@
 from fastapi.testclient import TestClient
 import api.main as main
-from api.workspace import WorkspaceRepository
+from api.workspace import WorkspaceRepository, ProjectCreate, TaskCreate
 from api.idempotency import GenerationReservation
 
 
 def test_claim_once_and_replay(tmp_path):
     repo = WorkspaceRepository(tmp_path / "test.db")
     reservation = GenerationReservation(repo)
-    assert reservation.claim("task", "request-key-0001")[0] == "CLAIMED"
-    assert reservation.claim("task", "request-key-0001")[0] == "RUNNING"
-    reservation.complete("task", "request-key-0001", "item-1")
-    assert reservation.claim("task", "request-key-0001") == ("COMPLETE", "item-1")
-    reservation.fail("task", "request-key-0001")
-    assert reservation.claim("task", "request-key-0001")[0] == "COMPLETE"
+    project = repo.create_project(ProjectCreate(name="Quota test"))
+    task = repo.create_task(TaskCreate(project_id=project["id"], mode="generate", brief="Test", quantity=1))
+    task_id = task["id"]
+    assert reservation.claim(task_id, "request-key-0001")[0] == "CLAIMED"
+    assert reservation.claim(task_id, "request-key-0001")[0] == "RUNNING"
+    assert reservation.claim(task_id, "request-key-0002")[0] == "CAPACITY"
+    reservation.complete(task_id, "request-key-0001", "item-1")
+    assert reservation.claim(task_id, "request-key-0001") == ("COMPLETE", "item-1")
+    reservation.fail(task_id, "request-key-0001")
+    assert reservation.claim(task_id, "request-key-0001")[0] == "COMPLETE"
 
 
 def test_api_replays_same_draft_instead_of_generating_twice(tmp_path, monkeypatch):

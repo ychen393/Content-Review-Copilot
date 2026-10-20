@@ -6,6 +6,7 @@ RUNNING/FAILED requests never silently trigger another billed model call.
 from __future__ import annotations
 import json
 from .workspace import WorkspaceRepository, timestamp
+from .database import postgres_enabled
 
 
 class GenerationReservation:
@@ -20,11 +21,24 @@ class GenerationReservation:
 
     def claim(self, task_id: str, key: str) -> tuple[str, str | None]:
         with self.workspace.connect() as db:
-            inserted = db.execute("INSERT INTO generation_requests (task_id, request_key, status, created_at) VALUES (?, ?, 'RUNNING', ?) ON CONFLICT(task_id, request_key) DO NOTHING RETURNING status", (task_id, key, timestamp())).fetchone()
-            row = db.execute("SELECT status, item_id FROM generation_requests WHERE task_id=? AND request_key=?", (task_id, key)).fetchone()
-            # The insert and read execute in the same transaction; concurrency-safe
-            # uniqueness lives in the database, not process memory.
-            return ("CLAIMED" if inserted else row[0], row[1])
+            # Serialize reservations for a task across serverless instances.
+            if postgres_enabled():
+                row = db.execute("SELECT payload FROM content_tasks WHERE id=? FOR UPDATE", (task_id,)).fetchone()
+            else:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute("SELECT payload FROM content_tasks WHERE id=?", (task_id,)).fetchone()
+            if not row:
+                raise LookupError("Task not found")
+            task = json.loads(row[0])
+            previous = db.execute("SELECT status, item_id FROM generation_requests WHERE task_id=? AND request_key=?", (task_id, key)).fetchone()
+            if previous:
+                return (previous[0], previous[1])
+            count = db.execute("SELECT COUNT(*) FROM content_items WHERE task_id=?", (task_id,)).fetchone()[0]
+            running = db.execute("SELECT COUNT(*) FROM generation_requests WHERE task_id=? AND status='RUNNING'", (task_id,)).fetchone()[0]
+            if count + running >= task["quantity"]:
+                return ("CAPACITY", None)
+            db.execute("INSERT INTO generation_requests (task_id, request_key, status, created_at) VALUES (?, ?, 'RUNNING', ?)", (task_id, key, timestamp()))
+            return ("CLAIMED", None)
 
     def complete(self, task_id: str, key: str, item_id: str):
         with self.workspace.connect() as db:
