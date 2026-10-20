@@ -23,13 +23,14 @@ export default function Workspace({onLegacyReview,onReviewItem}:{onLegacyReview:
  const [title,setTitle]=useState('')
  const [body,setBody]=useState('')
  const [error,setError]=useState('')
+ const [generationNote,setGenerationNote]=useState('')
  const loadProjects=()=>request<Project[]>('/api/projects').then(setProjects).catch(e=>setError(String(e)))
  useEffect(()=>{loadProjects()},[])
  useEffect(()=>{setTasks([]);setTask('');if(selected)request<Task[]>(`/api/projects/${selected}/tasks`).then(setTasks).catch(e=>setError(String(e)))},[selected])
  useEffect(()=>{setItems([]);if(task)request<Item[]>(`/api/tasks/${task}/items`).then(setItems).catch(e=>setError(String(e)))},[task])
  const submit=async(action:()=>Promise<void>)=>{setError('');try{await action()}catch(e){setError(e instanceof Error?e.message:String(e))}}
  return <main className="mx-auto max-w-6xl p-6 space-y-6">
- <header className="flex flex-wrap justify-between items-center gap-3"><div><p className="text-sm text-muted">Content Review Copilot / M2</p><h1 className="text-3xl font-bold">内容项目工作台</h1><p className="text-muted mt-1">创建项目、组织内容任务、保存文案版本。AI 批量生成将在下一阶段接入。</p></div><button className="btn-secondary" onClick={onLegacyReview}>返回单篇审核</button></header>
+ <header className="flex flex-wrap justify-between items-center gap-3"><div><p className="text-sm text-muted">Content Review Copilot / M2</p><h1 className="text-3xl font-bold">内容项目工作台</h1><p className="text-muted mt-1">创建项目、组织内容任务、保存文案版本。支持从 Brief 生成单篇候选草稿；生成后必须人工审核。</p></div><button className="btn-secondary" onClick={onLegacyReview}>返回单篇审核</button></header>
  {error&&<div role="alert" className="rounded-lg border border-red-300 p-3 text-red-700">{error}</div>}
  <section className="card space-y-3"><h2 className="text-xl font-semibold">新建项目</h2>
  <div className="grid gap-3 md:grid-cols-3"><input aria-label="项目名称" className="border rounded-lg p-2" placeholder="项目名称" value={name} onChange={e=>setName(e.target.value)}/><input aria-label="品牌" className="border rounded-lg p-2" placeholder="品牌" value={brand} onChange={e=>setBrand(e.target.value)}/><input aria-label="发布渠道" className="border rounded-lg p-2" value={platform} onChange={e=>setPlatform(e.target.value)}/></div>
@@ -42,6 +43,7 @@ export default function Workspace({onLegacyReview,onReviewItem}:{onLegacyReview:
  </section>
  {task&&<section className="card space-y-3"><h2 className="text-xl font-semibold">内容队列 · {items.length} 篇</h2>
  <p className="text-sm text-muted">可手工添加待审核稿件；新增版本不会覆盖历史版本。</p>
+ {tasks.find(t=>t.id===task)?.mode==='generate'&&<div className="rounded-lg border p-3 space-y-2"><p className="font-semibold">Brief → 候选初稿</p><p className="text-sm text-muted">每次生成一篇。Mock 模式只供演示，不可当作已验证 AI 输出；所有草稿均需人工审核。</p><button className="btn-primary" onClick={()=>submit(async()=>{const item=await request<Item & {generation?:{mode:string;note:string}}>('/api/tasks/'+task+'/generate-one',{});setGenerationNote(item.generation?.note||'草稿已创建，待人工审核');setItems(await request<Item[]>('/api/tasks/'+task+'/items'))})}>生成一篇草稿</button>{generationNote&&<p role="status" className="text-sm">{generationNote}</p>}</div>}
  <input aria-label="内容标题" className="border rounded-lg p-2 w-full" placeholder="标题" value={title} onChange={e=>setTitle(e.target.value)}/>
  <textarea aria-label="内容正文" className="border rounded-lg p-2 w-full" rows={4} placeholder="输入内容正文" value={body} onChange={e=>setBody(e.target.value)}/>
  <button className="btn-primary" onClick={()=>submit(async()=>{await request(`/api/tasks/${task}/items`,{title,body});setItems(await request<Item[]>(`/api/tasks/${task}/items`));setTitle('');setBody('')})}>添加内容</button>
