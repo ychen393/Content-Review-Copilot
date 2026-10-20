@@ -155,6 +155,18 @@ class WorkspaceRepository:
                        (json.dumps(item, ensure_ascii=False), item_id))
         return version
 
+    def update_item(self, item_id: str, fields: dict):
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT payload FROM content_items WHERE id=?", (item_id,)).fetchone()
+            if not row:
+                raise LookupError("Content item not found")
+            item = json.loads(row[0])
+            item.update(fields)
+            db.execute("UPDATE content_items SET payload=? WHERE id=?",
+                       (json.dumps(item, ensure_ascii=False), item_id))
+        return item
+
     def attach_review(self, item_id: str, review_id: str):
         """Associate one review session with a content item without altering versions."""
         with self.connect() as db:
