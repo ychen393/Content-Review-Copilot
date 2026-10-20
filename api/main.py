@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .models import DecisionRequest, ReviewCreateRequest, ReviewSessionViewModel
 from .service import ReviewWorkflowService
 from .workspace import WorkspaceRepository, ProjectCreate, TaskCreate, ItemCreate, VersionCreate
+from .drafting import DraftGenerationService, GenerateRequest
 from backend.documents import DefaultDocumentParser
 from .database import postgres_enabled
 
@@ -190,3 +191,16 @@ def storage_health():
     except Exception:
         logger.exception("Storage readiness check failed")
         raise HTTPException(503, "PostgreSQL connection unavailable")
+
+
+@app.post("/api/tasks/{task_id}/generate-one")
+def generate_task_draft(task_id: str, request: GenerateRequest):
+    try:
+        return DraftGenerationService(workspace).generate_one(task_id, request.instruction)
+    except LookupError as error:
+        raise HTTPException(404, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    except Exception as error:
+        logger.exception("Brief draft generation failed")
+        raise HTTPException(503, "生成暂时不可用，请检查模型配置或稍后重试") from error
