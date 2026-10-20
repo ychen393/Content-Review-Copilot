@@ -198,6 +198,8 @@ def storage_health():
 @app.post("/api/tasks/{task_id}/generate-one")
 def generate_task_draft(task_id: str, request: GenerateRequest):
     try:
+        if os.getenv("VERCEL") and not model_configuration_status()["ready"]:
+            raise ValueError("真实模型尚未配置；请先在 Vercel Preview 设置 LLM_PROVIDER、LLM_MODEL、LLM_API_KEY")
         if not request.request_key:
             raise ValueError("request_key required for safe generation")
         # Do not persist reservations for invalid tasks.
