@@ -15,19 +15,19 @@ class ReviewStore:
                 updated_time TEXT NOT NULL, payload TEXT NOT NULL)""")
 
     def save(self, session_id: str, created: str, updated: str, payload: dict) -> None:
-        with sqlite3.connect(self.path) as connection:
+        with database_connect(self.path) as connection:
             connection.execute(
                 "INSERT INTO review_workflows VALUES (?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET updated_time=excluded.updated_time, payload=excluded.payload",
                 (session_id, created, updated, json.dumps(payload, ensure_ascii=False)),
             )
 
     def get(self, session_id: str) -> dict | None:
-        with sqlite3.connect(self.path) as connection:
+        with database_connect(self.path) as connection:
             row = connection.execute("SELECT payload FROM review_workflows WHERE session_id=?", (session_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
     def list(self) -> list[dict]:
-        with sqlite3.connect(self.path) as connection:
+        with database_connect(self.path) as connection:
             rows = connection.execute("SELECT payload FROM review_workflows ORDER BY updated_time DESC").fetchall()
         return [json.loads(row[0]) for row in rows]
 
