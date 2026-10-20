@@ -20,11 +20,11 @@ class GenerationReservation:
 
     def claim(self, task_id: str, key: str) -> tuple[str, str | None]:
         with self.workspace.connect() as db:
-            db.execute("INSERT INTO generation_requests (task_id, request_key, status, created_at) VALUES (?, ?, 'RUNNING', ?) ON CONFLICT(task_id, request_key) DO NOTHING", (task_id, key, timestamp()))
+            inserted = db.execute("INSERT INTO generation_requests (task_id, request_key, status, created_at) VALUES (?, ?, 'RUNNING', ?) ON CONFLICT(task_id, request_key) DO NOTHING RETURNING status", (task_id, key, timestamp())).fetchone()
             row = db.execute("SELECT status, item_id FROM generation_requests WHERE task_id=? AND request_key=?", (task_id, key)).fetchone()
             # The insert and read execute in the same transaction; concurrency-safe
             # uniqueness lives in the database, not process memory.
-            return (row[0], row[1])
+            return ("CLAIMED" if inserted else row[0], row[1])
 
     def complete(self, task_id: str, key: str, item_id: str):
         with self.workspace.connect() as db:
