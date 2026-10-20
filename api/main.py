@@ -10,6 +10,7 @@ from .models import DecisionRequest, ReviewCreateRequest, ReviewSessionViewModel
 from .service import ReviewWorkflowService
 from .workspace import WorkspaceRepository, ProjectCreate, TaskCreate, ItemCreate, VersionCreate
 from .drafting import DraftGenerationService, GenerateRequest
+from .idempotency import GenerationReservation
 from backend.documents import DefaultDocumentParser
 from .database import postgres_enabled
 
@@ -197,7 +198,29 @@ def storage_health():
 @app.post("/api/tasks/{task_id}/generate-one")
 def generate_task_draft(task_id: str, request: GenerateRequest):
     try:
-        return DraftGenerationService(workspace).generate_one(task_id, request.instruction, auto_review=request.auto_review, review_service=service)
+        if not request.request_key:
+            raise ValueError("request_key required for safe generation")
+        # Do not persist reservations for invalid tasks.
+        task = workspace.get_task(task_id)
+        if not task:
+            raise LookupError("Task not found")
+        if task["mode"] != "generate" or not task.get("brief", "").strip():
+            raise ValueError("Valid Generate task with Brief required")
+        reservation = GenerationReservation(workspace)
+        status, item_id = reservation.claim(task_id, request.request_key)
+        if status == "COMPLETE" and item_id:
+            item = workspace.get_item(item_id)
+            if item:
+                return item
+        if status != "CLAIMED":
+            raise ValueError("This generation request is already running or failed; use a new key to retry")
+        try:
+            item = DraftGenerationService(workspace).generate_one(task_id, request.instruction, auto_review=request.auto_review, review_service=service)
+            reservation.complete(task_id, request.request_key, item["id"])
+            return item
+        except Exception:
+            reservation.fail(task_id, request.request_key)
+            raise
     except LookupError as error:
         raise HTTPException(404, str(error)) from error
     except ValueError as error:
