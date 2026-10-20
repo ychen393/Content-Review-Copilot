@@ -9,6 +9,7 @@ from .models import DecisionRequest, ReviewCreateRequest, ReviewSessionViewModel
 from .service import ReviewWorkflowService
 from .workspace import WorkspaceRepository, ProjectCreate, TaskCreate, ItemCreate, VersionCreate
 from backend.documents import DefaultDocumentParser
+from .database import postgres_enabled
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Content Review API", version="1.0.0")
@@ -173,3 +174,19 @@ def start_item_review(item_id: str):
     result = service.create(request)
     workspace.attach_review(item_id, result["id"])
     return public(result)
+
+
+@app.get("/api/health/storage")
+def storage_health():
+    """Check live DB connectivity without revealing database credentials."""
+    if not postgres_enabled():
+        return {"status": "unconfigured", "storage": "sqlite-local"}
+    try:
+        with workspace.connect() as db:
+            row = db.execute("SELECT 1").fetchone()
+        if row and row[0] == 1:
+            return {"status": "ok", "storage": "postgresql"}
+        raise RuntimeError("Unexpected database probe result")
+    except Exception:
+        logger.exception("Storage readiness check failed")
+        raise HTTPException(503, "PostgreSQL connection unavailable")

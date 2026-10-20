@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, Field
+from .database import connect as database_connect, postgres_enabled
 
 
 def timestamp():
@@ -44,7 +45,8 @@ class VersionCreate(BaseModel):
 class WorkspaceRepository:
     def __init__(self, path: str | Path = "data/history.sqlite3"):
         self.path = str(path)
-        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        if not postgres_enabled():
+            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript("""
             PRAGMA foreign_keys=ON;
@@ -65,9 +67,7 @@ class WorkspaceRepository:
             """)
 
     def connect(self):
-        db = sqlite3.connect(self.path, timeout=15)
-        db.execute("PRAGMA foreign_keys=ON")
-        return db
+        return database_connect(self.path, foreign_keys=True)
 
     def _insert(self, table, payload, **foreign):
         identifier = str(uuid.uuid4())
