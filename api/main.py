@@ -212,8 +212,10 @@ def generate_task_draft(task_id: str, request: GenerateRequest):
             item = workspace.get_item(item_id)
             if item:
                 return item
+        if status == "CAPACITY":
+            raise ValueError("Task generation quantity reached, including in-flight requests")
         if status != "CLAIMED":
-            raise ValueError("This generation request is already running or failed; use a new key to retry")
+            raise ValueError("This generation request is already running or failed; do not retry blindly")
         try:
             item = DraftGenerationService(workspace).generate_one(task_id, request.instruction, auto_review=request.auto_review, review_service=service)
             reservation.complete(task_id, request.request_key, item["id"])
