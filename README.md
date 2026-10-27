@@ -1,22 +1,291 @@
-# Multimodal Content QA & Optimization Agent
+# Content Review Copilot
+## 面向品牌内容的 AI 审稿、规则核验与可追踪改写
 
-A standalone Python 3.11+ portfolio application for multimodal content diagnosis and optimization. It preserves the source workflow's business logic while replacing private data services with synthetic JSON repositories.
+[English](README_EN.md) · 简体中文
 
-## Run locally
+Content Review Copilot 是一个面向品牌社交内容的审核工作台原型。它把“看一遍稿子、指出问题、改一版、再核对”整理成可操作的流程：先明确本次审核依据，再对稿件分段检查；编辑逐条处理建议后生成优化稿，系统执行二审，最后形成可导出的定稿和审稿记录。
 
-```powershell
+它要解决的具体问题是：品牌内容审核往往同时依赖任务 brief、品牌规范、产品知识、平台规则和编辑经验。若这些依据散落在不同文件或流程中，审核意见难以追溯，改稿后也容易遗漏之前发现的问题。这个原型把规则来源、问题证据、人工决策、改写和复核串成一个会话。
+
+> **项目状态与演示边界**
+>
+> 本仓库是可本地运行的作品集原型，使用合成数据展示产品流程。默认 `MockLLMProvider` 不需要 API key；本文演示中的品牌、产品、稿件与图片线索均为虚构示例。它不是已连接真实企业数据的生产系统，也没有实测的真实业务准确率。
+>
+> 目前仓库包含两个交互入口：面向编辑的 React + FastAPI 五步审稿界面，以及面向开发者的 Streamlit 工作台。默认模型为 mock。真实 provider 可对接 OpenAI-compatible 文本接口，但当前真实 provider 的视觉方法未实现；演示中的图片线索用文本描述输入，不能据此宣称真实图片识别已验收。
+
+## 一个具体的审稿演示
+
+下面用一篇虚构的日常产品分享稿，说明系统怎样从审核任务走到终稿。产品名称、规则和内容只用于演示，不代表真实品牌建议或法律意见。
+
+### 1. 建立审核任务
+
+| 设置项 | 本次示例 |
+| --- | --- |
+| 内容类型 | 产品体验 / 日常分享 |
+| 内容目标 | 品牌认知 |
+| 表达风格 | 真实自然 |
+| 必须覆盖的关键词 | `轻盈奶粉` |
+| 目标人设 | 新手妈妈：真诚、克制、具体 |
+| 图片线索 | `厨房早餐`、`包装文字`（mock 可读的文字标签，不是真实视觉识别） |
+| 审核依据 | 任务要求、示例品牌规则、示例产品知识、演示平台规则、内容质量标准 |
+| 改写强度 | 正常优化 |
+
+编辑可直接粘贴稿件，也可上传 TXT、Markdown、DOCX 或 PDF 文件。任务创建后，页面展示审核重点和本次采用的规则来源及版本；任务、品牌、产品、平台、质量标准与自定义规则在该会话内形成审核策略快照。
+
+### 2. 输入原稿
+
+```text
+#日常
+根治问题，产品体验很好。
+推荐轻盈奶粉。
+```
+
+这个例子刻意放入几类可观察的问题：含有示例禁用词“根治”；开头没有具体场景；核心信息只有笼统评价；结尾采用直接推荐；关键词虽然在结尾出现，但没有覆盖核心段。
+
+### 3. 系统返回的问题卡片
+
+| 问题卡片 | 原文证据 | 严重程度 | 建议动作 |
+| --- | --- | --- | --- |
+| 医疗功效表达 | “根治问题” | 强制 / 高 | 按审核规则移除或替换“根治”；生成后再次扫描 |
+| 开头缺少场景 | “#日常”后直接进入结论 | 建议优化 | 补充人物、时间或使用情境；不能把未提供的经历写成事实 |
+| 核心段缺少具体依据 | “产品体验很好” | 建议优化 | 使用输入中已有的产品事实或体验细节；资料不足时不补造功效 |
+| 关键词覆盖不完整 | 核心段未出现“轻盈奶粉” | 建议优化 | 在核心内容里自然提及关键词 |
+| 结尾过于直接 | “推荐轻盈奶粉” | 建议优化 | 调整成按个人需求判断的收束表达 |
+
+问题卡片显示原文证据、问题类型、规则来源/编号、严重度和建议文本。硬性问题会被标记为必须处理；软性写作建议由编辑决定接受、忽略或重新生成。对于新增统计数字、奖项或类似高风险说法，API 流程包含声明守卫：如果生成稿新增了原稿没有支持的数字/承诺模式，会阻止流程继续，并提示补充证据或修改。
+
+> 演示注意：具体问题列表受当前解析器、示例规则文件和稿件分段结果影响。上表是根据代码与合成规则整理的案例说明，不是某次线上 LLM 的实测返回截图。
+
+### 4. 编辑决定与改写计划
+
+编辑可能做出以下决定：
+
+- 接受“删除或改写医疗功效表述”；
+- 接受“给开头补充具体生活场景”；
+- 接受“核心段补上关键词并使用已有事实”；
+- 接受“结尾改为克制表达”；
+- 对某条建议选择忽略或重新生成。
+
+系统据此形成改写任务，而不是只提供一个不可解释的整稿按钮。产品界面会展示采用的审核依据；API 会校验强制问题是否已处理，未接受或编辑的强制项不会进入下一阶段。
+
+### 5. 输出优化稿：解释性示例
+
+以下是**人工编写的目标示例**，用于说明希望得到的内容形态，**不是仓库 mock provider 的实际生成输出**。仓库默认 mock 生成逻辑会返回输入源文或固定兜底内容，以保证重复演示；若接入真实兼容模型，实际措辞取决于模型、输入和配置。
+
+```text
+最近准备早餐时，我顺手记录了这次轻盈奶粉的体验。
+
+关于产品本身，我会先看配方和包装上标注的信息，再结合自己的日常需求判断是否适合。仅凭“体验很好”这样的概括，还不足以说明具体感受；如果有真实使用细节，可以补充在这里。
+
+如果你也在了解轻盈奶粉，建议先核对产品标签和自己的需求，再做选择。
+```
+
+这里有意不写入“改善睡眠”“提升免疫力”等未经输入或产品知识支持的功效，也不虚构使用周期、评价人数、效果比例等数字。若项目知识库提供并核验了规格等事实，才应把对应内容补进稿件。
+
+### 6. 二审、终稿与版本记录
+
+优化稿生成后，编辑可以继续手动修改正文，再发起二审。二审会重新执行审核流程，检查新稿是否仍含强制问题或遗漏关键词；若有问题，编辑逐条处理。确认后可以：
+
+- 采用二审接受的修改生成最终版本；
+- 对当前稿件满意时，直接将当前稿标记为最终版本；
+- 复制最终正文或导出 Word；
+- 从历史记录重新打开审稿会话，查看流程状态和稿件版本。
+
+API 的流程状态包括 `NEW_REVIEW`、`WAITING_FOR_FIRST_DECISIONS`、`OPTIMIZED_DRAFT_READY`、`WAITING_FOR_SECOND_DECISIONS` 和 `READY_TO_DELIVER` 等；会话内容与决策保存在本地 SQLite。Streamlit 工作台另有版本保存、版本比较和 Markdown/Word 导出能力。
+
+## 产品工作流
+
+| 阶段 | 输入 / 动作 | 系统产物 | 编辑可以做什么 |
+| --- | --- | --- | --- |
+| 任务设置 | 稿件、类型、目标、风格、关键词、Persona、图片线索 | 审核任务与策略快照 | 调整品牌/质量规则，添加自定义规则 |
+| 首次审核 | 按规则解析文本、检查关键词与内容 | 分段诊断、证据、严重度、建议 | 接受、忽略或重新生成每条建议 |
+| 改写 | 使用已接受建议、产品知识和审核策略 | 优化草稿、标题候选、标签、改写验证 | 手动编辑草稿、决定是否进入二审 |
+| 二次审核 | 对优化稿重新运行审核 | 剩余问题和复核结果 | 处理新增或未解决的问题 |
+| 定稿 | 应用二审修改或保留当前稿件 | 最终内容、标签、可导出文件 | 复制正文、导出 Word、查看历史记录 |
+
+## 审核策略如何组织
+
+每次审核可以汇集以下依据，并记录来源、版本、规则数量：
+
+1. **任务要求**：关键词、内容目标、表达风格等本次 brief。
+2. **品牌规则**：例如品牌名称统一、禁止未经证实的功效承诺。
+3. **产品知识**：结构化产品事实，例如规格或官方描述。
+4. **平台规则包**：示例规则文件注明为 synthetic demo，不是任何平台的官方政策。
+5. **内容质量标准**：结构连贯、语气自然、Persona 匹配、CTA 自然度和图文一致性等。
+6. **自定义规则**：可以指定规则类型、适用范围和严重程度。
+
+审核策略由 Pydantic 模型表示，规则带有来源、版本、优先级、适用范围、必需词/禁用词等字段。构建策略时会检查关键词要求与禁用词之间的冲突，并生成基于规则内容的策略 ID。产品知识和规则通过本地 JSON repository 读取；本地 mock 数据用于展示接口结构，不代表真实企业知识库。
+
+## 系统怎么实现
+
+### 分层架构
+
+- **React 前端**：建立审核任务、设置规则、展示审核步骤、采纳/忽略建议、编辑优化稿、查看历史和导出。
+- **FastAPI 服务层**：提供创建审核、首次审核、提交决策、改写、二次审核、定稿、历史读取与 DOCX 导出接口。
+- **审核工作流服务**：维护会话状态和决策，确保强制问题完成处理后才能推进。
+- **Python pipeline**：组合输入解析、策略构建、上下文解析、图片线索处理、规则检查、分段诊断、改写计划、生成、改写验证和结果组装。
+- **本地数据层**：JSON 存储规则、知识、Persona、方向和参考文章；SQLite 存审稿会话。
+- **Streamlit 开发者工作台**：提供另一种本地演示入口，可查看诊断、评估、规则、provider 和 execution trace。
+
+### Pipeline 数据流
+
+```text
+稿件 + brief + 图片线索
+        ↓
+Pydantic 输入校验 / 审核策略快照 / 上下文解析
+        ↓
+规则与知识检索 ── 图片线索转结构化描述
+        ↓
+硬规则清理 / 内容拆分 / 开头、核心、结尾、人设诊断
+        ↓
+问题聚合 / 改写计划 / 整篇或分段生成
+        ↓
+改写后复核 / 必要时带反馈重试一次
+        ↓
+最终评估 / 报告 / 状态记录 / 执行轨迹
+```
+
+主要模块包括：
+
+| 模块 | 作用 |
+| --- | --- |
+| `InputParser` / Pydantic models | 校验稿件、审核规则、决策和输出结构 |
+| `ReviewPolicyBuilder` | 汇总任务、品牌、产品、平台、质量标准和自定义规则 |
+| `RuleRetriever` / `KnowledgeRetriever` | 从 JSON 仓库读取约束和写作上下文 |
+| `DeterministicRuleEngine` | 对明确禁用表达执行确定性清理并记录替换 |
+| `ContentParser` | 按规则将文本切成标题、开头、核心、结尾与标签 |
+| Section evaluators | 分别检查结构、关键词、事实/图文线索及 Persona |
+| `RewritePlanner` / `GenerationRouter` | 把已接受的问题整理成计划，并选择 full 或 staged route |
+| Rewrite generators | 整篇生成，或按 opening → core → ending 顺序传递上下文 |
+| `RewriteQualityValidator` | 检查目标问题、必需关键词、硬规则、事实保留、实质改动和新增问题 |
+| `TraceRecorder` / ResultAssembler | 记录阶段状态、摘要、延迟和错误，组装评估报告 |
+
+### 明确规则与语义评估的边界
+
+对于禁用词、必需关键词、明确字数限制等可机械判断的条件，系统使用确定性检查。写作自然度、人设、内容连贯性等更依赖语境的判断，则属于语义评估边界。策略明确区分 hard 与 soft 规则：硬规则需要阻止违规内容进入定稿；软规则向编辑提供建议，由编辑决定是否采纳。
+
+改写后，`RewriteQualityValidator` 会比较目标问题是否解决、必需词是否出现、原稿中出现的品牌/产品名称是否保留、是否有硬规则修复残留、文本是否有足够变化、是否引入新问题。验证失败时，pipeline 会带着失败反馈重试一次，并再次验证。验证是独立于生成器的后置 gate，不能仅凭模型自报“已通过”。
+
+## 数据与评估
+
+- `data/` 使用合成 JSON 文件保存示例品牌规则、平台规则、产品知识、质量 rubric、内容方向、Persona 和参考材料。
+- `benchmark/dataset.jsonl` 含 **30 条合成案例**，覆盖合规、关键词、结构、产品事实、人设、图文线索和边界输入等类别。
+- `python -m benchmark.runner` 计算 issue precision、recall、F1、compliance pass rate、平均延迟和估算成本。
+- 仓库 README 不预填模型准确率或性能数字；运行结果只适用于当次代码、数据和 provider 配置，不能直接解释为真实品牌审稿效果。
+- 开发者工作台记录每个阶段的耗时和 trace；estimate cost 由当前代码中的 token 估算逻辑产生，使用时需要结合真实 provider 的计费口径校准。
+
+## 技术栈
+
+| 层 | 技术 |
+| --- | --- |
+| 编辑端 | React、TypeScript、Vite、Tailwind CSS |
+| API | Python、FastAPI、Pydantic |
+| 审核与生成 | 模块化 Python pipeline、provider abstraction、确定性规则引擎 |
+| 本地存储 | JSON 规则/知识文件、SQLite 审稿历史 |
+| 开发者 UI | Streamlit |
+| 文档与数据处理 | python-docx、pypdf、pandas、openpyxl |
+
+## 本地运行
+
+需要 Python 3.11+ 和 Node.js/npm。
+
+### 启动 API
+
+在仓库根目录：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python -m pytest -q
-python -m benchmark.runner
+uvicorn api.main:app --reload
+```
+
+API 默认在 `http://127.0.0.1:8000`。可访问 `/api/health` 查看健康状态。
+
+### 启动 React 编辑端
+
+另开终端：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite 开发服务默认在 `http://localhost:5173`，配置为代理本地 API。
+
+### 启动 Streamlit 开发者工作台
+
+回到仓库根目录并运行：
+
+```bash
 streamlit run app.py
 ```
 
-The default provider is `MockLLMProvider`, so no API key is needed. The provider contract exposes `generate`, `structured_generate`, and `vision` for a future hosted-model adapter.
+开发者工作台使用双语界面；可切换 Product/Developer 模式查看流程视图或技术细节。
 
-## Architecture
+### 运行离线 benchmark
 
-Typed Pydantic contracts connect `InputParser`, `VisionAnalyzer`, `ContextResolver`, `RuleRetriever`, `KnowledgeRetriever`, `DeterministicRuleEngine`, `ContentParser`, independent evaluators, `RewritePlanner`, `GenerationRouter`, full/staged generators, `FinalEvaluator`, and `ResultAssembler`. Hard constraints remain deterministic; semantic checks are isolated behind evaluator/provider boundaries.
+```bash
+python -m benchmark.runner
+```
 
-The staged route passes generated opening into core generation and both prior sections into ending generation. Every pipeline step records a trace entry. The Streamlit app exposes Overview, Diagnosis, Vision Analysis, Rewrite Plan, Final Content, Evaluation, and Execution Trace tabs.
+此命令处理 30 个本地合成 case。输出分数不应被解读为线上质量保证。
 
-See [docs/original_workflow_analysis.md](docs/original_workflow_analysis.md) and [docs/new_architecture.md](docs/new_architecture.md) for the source graph and redesign mapping.
+### 配置真实文本模型（可选）
+
+创建仓库根目录下的 `.env`，填入 OpenAI-compatible Chat Completions 服务配置：
+
+```dotenv
+LLM_PROVIDER=openai
+LLM_MODEL=your-model-name
+LLM_API_KEY=your-api-key
+LLM_BASE_URL=https://api.openai.com/v1
+```
+
+当前 `RealLLMProvider` 实现文本生成及基于文本的结构化输出，视觉接口尚未实现。请不要把 `.env` 或密钥提交到仓库。连接真实模型后，还需要单独进行模型行为、规则效果、成本和延迟验收。
+
+## 仓库结构
+
+```text
+app.py                     Streamlit 双语技术工作台
+api/
+  main.py                  FastAPI 路由与应用入口
+  service.py               五阶段审稿状态流转、证据守卫与导出
+  store.py                 SQLite 会话存储
+backend/
+  pipeline.py              审核 pipeline 与 trace
+  policy.py                策略组装与 hard/soft 规则评估
+  providers.py             Mock / OpenAI-compatible provider
+  services.py              解析、分段诊断、上下文和路由
+  generators.py             整篇与分段生成器
+  validation.py             改写质量后置验证
+  repositories.py           JSON 规则/知识检索
+frontend/
+  src/App.tsx               React 审稿工作台
+  src/api.ts                前端 API 客户端
+data/                       合成规则、产品知识、Persona 与 rubric
+benchmark/                  30 条合成评估案例和指标实现
+docs/                       工作流分析与架构映射
+tests/                      Python 测试
+```
+
+## 设计取舍与边界
+
+- **规则必须可追溯**：问题卡片带证据和规则来源；审核策略保存为会话快照。
+- **编辑保留决定权**：建议可以逐条接受、忽略或重新生成；系统不会把“自动建议”伪装成编辑确认。
+- **硬约束与文风建议分开**：必需词、禁用词和高风险问题用于阻断；写作质量建议供编辑判断。
+- **生成稿需过复核**：定稿之前重新审查，必要时带反馈重写一次。
+- **内容事实要有来源**：用输入与产品知识支撑卖点，拦截未获支持的新增数字/承诺模式。
+- **演示数据不是实务结论**：规则文件显式注明示例平台规则是合成的，不是官方规则；mock benchmark 也不代表真实准确率。
+- **视觉能力需如实理解**：当前 mock 接受文字线索，真实 provider 的 vision 仍为空实现。
+
+## 项目文档
+
+- [原始工作流分析](docs/original_workflow_analysis.md)
+- [新架构设计](docs/new_architecture.md)
+
+## License
+
+仓库当前未声明开源许可证；复用或分发前请先确认许可安排。
+
